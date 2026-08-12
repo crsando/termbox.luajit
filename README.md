@@ -1,25 +1,25 @@
 # termbox.luajit
 
-一个基于 LuaJIT、luv 和 termbox2 的小型 TUI 框架首版。
+一个基于 LuaJIT、luv 和 termbox 的小型 TUI 框架首版。
 
 当前包含：
 
-- `TextBox`：只读文字展示，支持边框、基础换行和垂直滚动消息。
-- `PromptBox`：单行命令输入，支持字符输入、左右移动、Backspace、Enter 提交。`update()` 在 Enter 时返回提交字符串，其他已处理事件返回 `true`。
+- `TextBox`：只读文字展示，支持边框、基础换行、垂直滚动和自动追踪最新内容。
+- `PromptBox`：单行命令输入，支持字符输入、左右移动、Backspace 和 Enter 提交。
 
 ## 架构
 
 ```text
-termbox2 C event -> Lua binding -> normalized message -> model:update(msg)
-                                                               |
-                                                        state + commands
-                                                               |
-                                                    model:view(canvas, rect)
-                                                               |
-                                                        cell buffer -> binding
+termbox C event -> Lua binding -> normalized message -> model:update(msg)
+                                                              |
+                                                       state + commands
+                                                              |
+                                                   model:view(canvas, rect)
+                                                              |
+                                                       cell buffer -> binding
 ```
 
-`luv` 提供异步事件循环。`src/termbox_lua.c` 是原生 Lua binding，直接使用 `vendor/termbox2.h` 的 C API；Lua 层不使用 LuaJIT FFI。
+`luv` 提供异步事件循环。`src/termbox.c` 是原生 Lua binding，直接使用 `vendor/termbox.h` 的 C API；Lua 层不使用 LuaJIT FFI。
 
 ## 依赖
 
@@ -37,15 +37,19 @@ make
 make test
 ```
 
-`make` 会编译：
+`make` 会编译 LuaJIT 原生模块：
 
 ```text
 termbox.so
 ```
 
-这是 LuaJIT 可加载的原生模块，模块名为 `termbox`。Makefile 默认通过 `pkg-config --cflags --libs luajit` 找 LuaJIT 编译参数，也可以手动覆盖 `LUAJIT_CFLAGS` 和 `LUAJIT_LIBS`。
+模块名为 `termbox`：
 
-例如：
+```lua
+local termbox = require("termbox")
+```
+
+Makefile 默认通过 `pkg-config --cflags --libs luajit` 查找 LuaJIT，也可以手动覆盖：
 
 ```sh
 make LUAJIT_CFLAGS="-I/opt/homebrew/opt/luajit/include/luajit-2.1" \
@@ -58,7 +62,7 @@ make LUAJIT_CFLAGS="-I/opt/homebrew/opt/luajit/include/luajit-2.1" \
 make run
 ```
 
-目前 demo 使用的终端事件包括：
+目前 demo 支持：
 
 - 可打印 ASCII 字符
 - Left / Right
@@ -67,9 +71,9 @@ make run
 - 输入 `/exit` 后按 Enter 退出
 - `Ctrl-C` 退出
 
-## Binding API
+Demo 将 PromptBox 提交视为用户与程序的对话。用户记录以 `>>> ` 开头，程序回复紧随其后；TextBox 始终优先展示最近记录。PromptBox 固定在 terminal 最下方，TextBox 占据上方全部空间。
 
-Lua 原生模块目前暴露：
+## Binding API
 
 ```lua
 local termbox = require("termbox")
@@ -85,14 +89,14 @@ termbox.present()
 termbox.shutdown()
 ```
 
-`termbox.poll()` 返回标准化前的事件表，例如：
+`termbox.poll()` 返回原生事件表：
 
 ```lua
 { type = "key", key = ..., ch = ..., mod = ... }
 { type = "resize", width = ..., height = ... }
 ```
 
-`lib/tui/terminal.lua` 再把它转换成框架消息：
+`lib/tui/terminal.lua` 将其转换成框架消息：
 
 ```lua
 { type = "text", text = "a" }
@@ -100,39 +104,53 @@ termbox.shutdown()
 { type = "resize", width = 80, height = 24 }
 ```
 
-## termbox2 来源
+## termbox 来源
 
-`vendor/termbox2.h` 从以下官方仓库下载：
+项目内使用的 single-header 文件是：
+
+```text
+vendor/termbox.h
+```
+
+它下载自上游仓库：
 
 <https://github.com/termbox/termbox2>
 
-它是 single-header library。`src/termbox_lua.c` 使用：
+仓库 URL 中的 `termbox2` 是上游项目的真实名称；本项目内部统一使用 `termbox` 命名。
+
+C binding 通过以下方式包含实现：
 
 ```c
 #define TB_IMPL
-#include "termbox2.h"
+#include "termbox.h"
 ```
 
-因此不需要额外安装 termbox2 动态库。
+因此不需要额外安装 termbox 动态库。
 
 ## 目录
 
 ```text
-vendor/termbox2.h       官方 termbox2 single-header
-src/termbox_lua.c       LuaJIT C binding
+vendor/termbox.h        termbox single-header
+src/termbox.c           LuaJIT C binding
 termbox.so              编译产物
 lib/tui/init.lua        MUV runtime
 lib/tui/canvas.lua      cell canvas
 lib/tui/widgets.lua     TextBox / PromptBox
 lib/tui/terminal.lua    binding adapter
 examples/prompt.lua     demo model
-tests/smoke.lua          no-terminal smoke test
+tests/smoke.lua         no-terminal smoke test
 ```
+
+## 编码规范
+
+- 所有项目代码统一使用 4 个空格缩进，不使用 Tab；Makefile recipe 行是 GNU Make 的语法例外，必须使用 Tab。
+- 特别简单、语义清晰的语句可以写在一行，例如简单的 `return` 或短函数。
+- `if`、`function`、`for`、`while` 等结构默认展开换行，保持代码易读；只有非常简单的单分支逻辑才允许紧凑书写。
+- 复杂表达式、函数参数和 table 字段按需要分行，保证每行职责清晰。
+- 第三方 `vendor/termbox.h` 保持上游格式，不参与本项目格式化。
 
 ## 当前限制
 
 - 输入和绘制暂按 ASCII 字符处理，UTF-8 display width 尚未加入。
 - 当前没有鼠标、剪贴板、复杂布局和 ViewTable。
-- demo 使用纵向自适应布局：PromptBox 固定在 terminal 最下方，TextBox 占据其上方的全部空间；两者宽度跟随 terminal，正常尺寸下左右各保留 1 列边距。
-- demo 将 PromptBox 提交视为用户与程序的对话：用户记录以 `>>> ` 开头，程序回复紧随其后；TextBox 的 `follow_tail` 模式始终优先展示最近记录。
-- 原生 binding 的颜色目前只映射基础颜色名，Canvas 样式扩展留待后续版本。
+- 原生 binding 的颜色目前只映射基础颜色名。

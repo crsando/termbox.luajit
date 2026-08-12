@@ -1,17 +1,32 @@
 package.path = "./lib/?.lua;./lib/?/init.lua;" .. package.path
+
 local Canvas = require("tui.canvas")
 local Widgets = require("tui.widgets")
-local c = Canvas.new(40, 8)
-local t = Widgets.TextBox.new({ text = "hello\nworld" }); t:view(c, { x=0,y=0,width=20,height=4 })
-local p = Widgets.PromptBox.new({ prompt = "> " }); p:update({ type="text", text="abc" }); p:update({ type="key", code="backspace" }); p:view(c, { x=0,y=4,width=20,height=3 })
-assert(c.cells[1][1].ch == "h")
-assert(p.value == "ab")
-p:update({ type="key", code="enter" })
-assert(p.submitted == "ab")
-assert(p.value == "")
-local tail = Widgets.TextBox.new({ text = "one\ntwo\nthree\nfour", follow_tail = true })
+
+local canvas = Canvas.new(40, 8)
+local text_box = Widgets.TextBox.new({ text = "hello\nworld" })
+text_box:view(canvas, { x = 0, y = 0, width = 20, height = 4 })
+
+local prompt_box = Widgets.PromptBox.new({ prompt = "> " })
+prompt_box:update({ type = "text", text = "abc" })
+prompt_box:update({ type = "key", code = "backspace" })
+prompt_box:view(canvas, { x = 0, y = 4, width = 20, height = 3 })
+
+assert(canvas.cells[1][1].ch == "h")
+assert(prompt_box.value == "ab")
+
+prompt_box:update({ type = "key", code = "enter" })
+assert(prompt_box.submitted == "ab")
+assert(prompt_box.value == "")
+
+local tail = Widgets.TextBox.new({
+    text = "one\ntwo\nthree\nfour",
+    follow_tail = true,
+})
 local tail_canvas = Canvas.new(20, 4)
-tail:view(tail_canvas, { x=0, y=0, width=10, height=4 })
+tail:view(tail_canvas, { x = 0, y = 0, width = 10, height = 4 })
+
 assert(tail.scroll == 2)
 assert(tail_canvas.cells[1][1].ch == "t")
+
 print("smoke: ok")

@@ -9,7 +9,7 @@ LDFLAGS ?= -bundle -undefined dynamic_lookup
 
 all: termbox.so
 
-termbox.so: src/termbox_lua.c vendor/termbox2.h
+termbox.so: src/termbox.c vendor/termbox.h
 	$(CC) $(CFLAGS) $(LUAJIT_CFLAGS) $(LDFLAGS) -Ivendor -o $@ $< $(LUAJIT_LIBS)
 
 test: termbox.so

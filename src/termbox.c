@@ -1,5 +1,5 @@
 #define TB_IMPL
-#include "termbox2.h"
+#include "termbox.h"
 #include <lua.h>
 #include <lauxlib.h>
 #include <stdint.h>
