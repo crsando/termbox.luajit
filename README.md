@@ -151,6 +151,7 @@ tests/smoke.lua         no-terminal smoke test
 
 ## 当前限制
 
-- 输入和绘制暂按 ASCII 字符处理，UTF-8 display width 尚未加入。
 - 当前没有鼠标、剪贴板、复杂布局和 ViewTable。
+- PromptBox 采用单行水平滚动：保留完整输入内容，只显示光标附近的可视窗口。
+- 输入和绘制暂按 ASCII 字符处理，UTF-8 display width 尚未加入。
 - 原生 binding 的颜色目前只映射基础颜色名。

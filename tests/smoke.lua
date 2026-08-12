@@ -29,4 +29,22 @@ tail:view(tail_canvas, { x = 0, y = 0, width = 10, height = 4 })
 assert(tail.scroll == 2)
 assert(tail_canvas.cells[1][1].ch == "t")
 
+local long_prompt = Widgets.PromptBox.new({ prompt = "> " })
+long_prompt:update({ type = "text", text = "abcdefghij" })
+local prompt_canvas = Canvas.new(20, 4)
+long_prompt:view(prompt_canvas, { x = 0, y = 0, width = 8, height = 3 })
+
+assert(long_prompt.cursor == 10)
+assert(long_prompt.scroll == 7)
+assert(prompt_canvas.cells[1][3].ch == "h")
+assert(prompt_canvas.cursor.x == 6)
+
+long_prompt:update({ type = "key", code = "left" })
+long_prompt:update({ type = "key", code = "left" })
+long_prompt:view(prompt_canvas, { x = 0, y = 0, width = 8, height = 3 })
+
+assert(long_prompt.cursor == 8)
+assert(long_prompt.scroll == 7)
+assert(prompt_canvas.cursor.x == 4)
+
 print("smoke: ok")

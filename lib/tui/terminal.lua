@@ -8,6 +8,8 @@ local keys = {
     [native.KEY_BACKSPACE] = "backspace",
     [native.KEY_BACKSPACE2] = "backspace",
     [native.KEY_ENTER] = "enter",
+    [1] = "ctrl-a",
+    [5] = "ctrl-e",
 }
 
 function Terminal.new()

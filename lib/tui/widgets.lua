@@ -98,6 +98,10 @@ function PromptBox:update(msg)
         self.cursor = math.max(0, self.cursor - 1)
     elseif msg.code == "right" then
         self.cursor = math.min(#self.value, self.cursor + 1)
+    elseif msg.code == "ctrl-a" then
+        self.cursor = 0
+    elseif msg.code == "ctrl-e" then
+        self.cursor = #self.value
     elseif msg.code == "backspace" and self.cursor > 0 then
         self.value = self.value:sub(1, self.cursor - 1)
             .. self.value:sub(self.cursor + 1)
@@ -120,21 +124,59 @@ function PromptBox:update(msg)
     return true
 end
 
+function PromptBox:ensure_cursor_visible(input_width)
+    if input_width <= 0 then
+        self.scroll = self.cursor
+        return
+    end
+
+    if self.cursor < self.scroll then
+        self.scroll = self.cursor
+    end
+
+    if self.cursor > self.scroll + input_width - 1 then
+        self.scroll = self.cursor - input_width + 1
+    end
+
+    self.scroll = math.max(0, self.scroll)
+end
+
 function PromptBox:view(canvas, rect)
     canvas:box(rect, { fg = "cyan" })
 
     local content = inner(rect)
-    local visible = self.prompt
-        .. self.value:sub(self.scroll + 1, self.scroll + content.width)
+    local prompt_width = math.min(#self.prompt, content.width)
+    local input_width = math.max(0, content.width - prompt_width)
 
-    canvas:text(content.x, content.y, visible, {})
-    canvas:cursor_at(
-        math.min(
-            content.x + #self.prompt + self.cursor - self.scroll,
-            content.x + content.width - 1
-        ),
-        content.y
-    )
+    self:ensure_cursor_visible(input_width)
+
+    if prompt_width > 0 then
+        canvas:text(
+            content.x,
+            content.y,
+            self.prompt:sub(1, prompt_width),
+            {}
+        )
+    end
+
+    if input_width > 0 then
+        canvas:text(
+            content.x + prompt_width,
+            content.y,
+            self.value:sub(self.scroll + 1, self.scroll + input_width),
+            {}
+        )
+    end
+
+    if content.width > 0 then
+        canvas:cursor_at(
+            math.min(
+                content.x + prompt_width + self.cursor - self.scroll,
+                content.x + content.width - 1
+            ),
+            content.y
+        )
+    end
 end
 
 M.TextBox = TextBox
