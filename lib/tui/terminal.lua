@@ -1,4 +1,5 @@
 local native = require("ltermbox")
+local ColorEncoder = require("tui.color_encoder")
 local Terminal = {}
 Terminal.__index = Terminal
 
@@ -12,9 +13,28 @@ local keys = {
     [5] = "ctrl-e",
 }
 
-function Terminal.new()
+function Terminal.new(opts)
+    opts = opts or {}
+    local colors = ColorEncoder.new({
+        mode = opts.color_mode or "auto",
+        env = opts.env,
+        has_truecolor = native.has_truecolor(),
+        bright_attribute = native.ATTR_BRIGHT,
+        black_attribute = native.ATTR_HI_BLACK,
+    })
+
     assert(native.init() == 0, "termbox init failed")
-    return setmetatable({}, Terminal)
+    local mode_result = native.set_output_mode(colors.mode)
+
+    if mode_result ~= 0 then
+        native.shutdown()
+        error("termbox output mode failed: " .. colors.mode)
+    end
+
+    return setmetatable({
+        colors = colors,
+        color_mode = colors.mode,
+    }, Terminal)
 end
 
 function Terminal:size()
@@ -78,8 +98,8 @@ function Terminal:present(canvas)
                 x,
                 y,
                 cell.ch,
-                cell.fg,
-                cell.bg,
+                self.colors:encode(cell.fg),
+                self.colors:encode(cell.bg),
                 cell.bold
             )
         end

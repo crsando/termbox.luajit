@@ -1,3 +1,4 @@
+local Color = require("tui.color")
 local Canvas = {}
 Canvas.__index = Canvas
 
@@ -10,8 +11,8 @@ function Canvas.new(width, height)
         for x = 0, width - 1 do
             cells[y][x] = {
                 ch = " ",
-                fg = "default",
-                bg = "default",
+                fg = Color.default,
+                bg = Color.default,
             }
         end
     end
@@ -31,10 +32,13 @@ function Canvas:set(x, y, ch, style)
 
     style = style or {}
 
+    local foreground = style.fg
+    local background = style.bg
+
     self.cells[y][x] = {
         ch = ch,
-        fg = style.fg or "default",
-        bg = style.bg or "default",
+        fg = Color.normalize(foreground),
+        bg = Color.normalize(background),
         bold = style.bold,
     }
 end
@@ -42,6 +46,14 @@ end
 function Canvas:text(x, y, text, style)
     for i = 1, #text do
         self:set(x + i - 1, y, text:sub(i, i), style)
+    end
+end
+
+function Canvas:fill(rect, style)
+    for y = rect.y, rect.y + rect.height - 1 do
+        for x = rect.x, rect.x + rect.width - 1 do
+            self:set(x, y, " ", style)
+        end
     end
 end
 

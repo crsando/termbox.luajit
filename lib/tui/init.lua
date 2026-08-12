@@ -1,5 +1,6 @@
 local uv = require("luv")
 local Canvas = require("tui.canvas")
+local Color = require("tui.color")
 
 local Runtime = {}
 Runtime.__index = Runtime
@@ -90,5 +91,6 @@ end
 
 return {
     Runtime = Runtime,
+    Color = Color,
     uv = uv,
 }

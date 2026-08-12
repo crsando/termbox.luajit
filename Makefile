@@ -30,6 +30,7 @@ ltermbox.so: src/termbox.c vendor/termbox.h
 	$(CC) $(CFLAGS) $(LUAJIT_CFLAGS) $(LDFLAGS) -Ivendor -o $@ $< $(LUAJIT_LIBS)
 
 test: ltermbox.so
+	$(LUAJIT) tests/colors.lua
 	$(LUAJIT) tests/smoke.lua
 
 run: ltermbox.so

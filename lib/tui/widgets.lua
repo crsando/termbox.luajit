@@ -1,3 +1,4 @@
+local Color = require("tui.color")
 local M = {}
 
 local function inner(rect)
@@ -36,7 +37,7 @@ function TextBox:update(msg)
 end
 
 function TextBox:view(canvas, rect)
-    canvas:box(rect, { fg = "white" })
+    canvas:box(rect, { fg = Color.white })
 
     local content = inner(rect)
     local lines = {}
@@ -142,7 +143,11 @@ function PromptBox:ensure_cursor_visible(input_width)
 end
 
 function PromptBox:view(canvas, rect)
-    canvas:box(rect, { fg = "cyan" })
+    local style = {
+        fg = Color.rgb(168, 170, 166),
+        bg = Color.rgb(30, 30, 30),
+    }
+    canvas:fill(rect, style)
 
     local content = inner(rect)
     local prompt_width = math.min(#self.prompt, content.width)
@@ -155,7 +160,7 @@ function PromptBox:view(canvas, rect)
             content.x,
             content.y,
             self.prompt:sub(1, prompt_width),
-            {}
+            style
         )
     end
 
@@ -164,7 +169,7 @@ function PromptBox:view(canvas, rect)
             content.x + prompt_width,
             content.y,
             self.value:sub(self.scroll + 1, self.scroll + input_width),
-            {}
+            style
         )
     end
 

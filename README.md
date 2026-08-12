@@ -78,16 +78,72 @@ Demo 将 PromptBox 提交视为用户与程序的对话。用户记录以 `>>> `
 ```lua
 local termbox = require("ltermbox")
 termbox.init()
+termbox.set_output_mode("truecolor")
+termbox.output_mode()
+termbox.has_truecolor()
+termbox.attr_width()
 termbox.width()
 termbox.height()
 termbox.clear()
-termbox.set_cell(x, y, ch, fg, bg, bold)
+termbox.set_cell(x, y, ch, fg_attr, bg_attr, bold)
 termbox.set_cursor(x, y)
 termbox.hide_cursor()
 termbox.poll(timeout_ms)
 termbox.present()
 termbox.shutdown()
 ```
+
+Binding 接收的是已经按当前输出模式编码的数值颜色属性。应用和 Widget
+应通过 `Canvas` 使用 RGB 颜色，由 `Terminal` 统一完成编码和降级。
+
+## 颜色
+
+框架以 RGB 作为统一颜色模型：
+
+```lua
+local Color = require("tui").Color
+
+local style = {
+    fg = Color.rgb(32, 32, 32),
+    bg = Color.hex("#d3d3d3"),
+}
+
+canvas:text(1, 1, "hello", style)
+```
+
+也可以使用内置名称，现有字符串写法保持兼容：
+
+```lua
+canvas:text(1, 1, "hello", {
+    fg = "black",
+    bg = "light_gray",
+})
+```
+
+`Color.default` 表示终端默认颜色。它与纯黑色 `Color.black` 不同。
+
+Terminal 支持以下颜色输出模式：
+
+- `truecolor`：RGB 原样输出。
+- `256`：RGB 映射到最接近的 xterm 256 色或灰阶。
+- `normal`：RGB 映射到最接近的 ANSI 16 色。
+- `auto`：根据环境自动选择，默认值。
+
+可以在创建 Terminal 时显式选择：
+
+```lua
+local terminal = Terminal.new({ color_mode = "256" })
+```
+
+也可以通过环境变量配置：
+
+```sh
+TUI_COLOR_MODE=truecolor make run
+```
+
+`auto` 模式按以下顺序判断：显式 `color_mode`、`TUI_COLOR_MODE`、
+`NO_COLOR`、`COLORTERM=truecolor/24bit`、`TERM=*256color`，最后回退到
+`normal`。终端能力检测并不完全可靠，需要时应显式指定模式。
 
 `termbox.poll()` 返回原生事件表：
 
@@ -121,11 +177,13 @@ vendor/termbox.h
 C binding 通过以下方式包含实现：
 
 ```c
+#define TB_OPT_ATTR_W 32
 #define TB_IMPL
 #include "termbox.h"
 ```
 
-因此不需要额外安装 termbox 动态库。
+`TB_OPT_ATTR_W=32` 启用 truecolor 和 32 位颜色属性；项目不需要额外安装
+termbox 动态库。
 
 ## 目录
 
@@ -135,10 +193,13 @@ src/termbox.c           LuaJIT C binding
 ltermbox.so             编译产物
 lib/tui/init.lua        MUV runtime
 lib/tui/canvas.lua      cell canvas
+lib/tui/color.lua       RGB color model
+lib/tui/color_encoder.lua terminal color quantization
 lib/tui/widgets.lua     TextBox / PromptBox
 lib/tui/terminal.lua    binding adapter
 examples/prompt.lua     demo model
-tests/smoke.lua         no-terminal smoke test
+tests/colors.lua        color model and quantization tests
+tests/smoke.lua         widget smoke test
 ```
 
 ## 编码规范
@@ -154,4 +215,3 @@ tests/smoke.lua         no-terminal smoke test
 - 当前没有鼠标、剪贴板、复杂布局和 ViewTable。
 - PromptBox 采用单行水平滚动：保留完整输入内容，只显示光标附近的可视窗口。
 - 输入和绘制暂按 ASCII 字符处理，UTF-8 display width 尚未加入。
-- 原生 binding 的颜色目前只映射基础颜色名。
