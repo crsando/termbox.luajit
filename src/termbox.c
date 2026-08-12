@@ -63,11 +63,11 @@ static const luaL_Reg funcs[] = {
     {"set_cell", l_set_cell}, {"poll", l_poll}, {NULL, NULL}
 };
 
-int luaopen_termbox(lua_State *L) {
+int luaopen_ltermbox(lua_State *L) {
 #if LUA_VERSION_NUM >= 502
     luaL_newlib(L, funcs);
 #else
-    luaL_register(L, "termbox", funcs);
+    luaL_register(L, "ltermbox", funcs);
 #endif
     lua_pushinteger(L, TB_EVENT_KEY); lua_setfield(L, -2, "EVENT_KEY");
     lua_pushinteger(L, TB_EVENT_RESIZE); lua_setfield(L, -2, "EVENT_RESIZE");

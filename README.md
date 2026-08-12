@@ -40,13 +40,13 @@ make test
 `make` 会编译 LuaJIT 原生模块：
 
 ```text
-termbox.so
+ltermbox.so
 ```
 
-模块名为 `termbox`：
+模块名为 `ltermbox`：
 
 ```lua
-local termbox = require("termbox")
+local termbox = require("ltermbox")
 ```
 
 Makefile 默认通过 `pkg-config --cflags --libs luajit` 查找 LuaJIT，也可以手动覆盖：
@@ -76,7 +76,7 @@ Demo 将 PromptBox 提交视为用户与程序的对话。用户记录以 `>>> `
 ## Binding API
 
 ```lua
-local termbox = require("termbox")
+local termbox = require("ltermbox")
 termbox.init()
 termbox.width()
 termbox.height()
@@ -132,7 +132,7 @@ C binding 通过以下方式包含实现：
 ```text
 vendor/termbox.h        termbox single-header
 src/termbox.c           LuaJIT C binding
-termbox.so              编译产物
+ltermbox.so             编译产物
 lib/tui/init.lua        MUV runtime
 lib/tui/canvas.lua      cell canvas
 lib/tui/widgets.lua     TextBox / PromptBox

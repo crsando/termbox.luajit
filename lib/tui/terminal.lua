@@ -1,4 +1,4 @@
-local native = require("termbox")
+local native = require("ltermbox")
 local Terminal = {}
 Terminal.__index = Terminal
 
