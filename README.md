@@ -5,7 +5,7 @@
 当前包含：
 
 - `TextBox`：只读 UTF-8 文字展示，支持 Unicode 边框、按显示列换行、鼠标滚轮和
-  可暂停的自动追尾。
+  可暂停的自动追尾；可选 Markdown 渲染支持强调、斜体、粗体和一至四级标题。
 - `PromptBox`：单行 UTF-8 命令输入，支持光标移动、Backspace、Enter 提交以及
   Up/Down 命令历史导航。
 
@@ -106,7 +106,7 @@ termbox.set_mouse_enabled(true)
 termbox.width()
 termbox.height()
 termbox.clear()
-termbox.set_cell(x, y, ch, fg_attr, bg_attr, bold)
+termbox.set_cell(x, y, ch, fg_attr, bg_attr, bold, italic)
 termbox.set_cursor(x, y)
 termbox.hide_cursor()
 termbox.poll(timeout_ms)
@@ -116,6 +116,22 @@ termbox.shutdown()
 
 Binding 接收的是已经按当前输出模式编码的数值颜色属性。应用和 Widget
 应通过 `Canvas` 使用 RGB 颜色，由 `Terminal` 统一完成编码和降级。
+
+`Canvas` cell style 支持 `bold` 和 `italic`；后者在终端能力允许时使用 termbox
+的 `TB_ITALIC` 属性，同时由 Markdown 主题提供颜色回退。
+
+TextBox 默认按纯文本渲染。显式设置 `format = "markdown"` 后启用受控 Markdown：
+
+```lua
+local box = Widgets.TextBox.new({
+    format = "markdown",
+    text = "# Title\n普通 *斜体* 和 **粗体**",
+})
+```
+
+支持的语法只有 `*emphasis*`、`_emphasis_`、`**strong**`、`__strong__` 和行首
+`#` 至 `####` 标题。未闭合或不匹配的标记按普通文本显示；代码、列表、链接、表格
+和图片暂不解析。
 
 ## 颜色
 
@@ -224,6 +240,7 @@ lib/tui/terminal.lua    binding adapter
 examples/prompt.lua     demo model
 tests/colors.lua        color model and quantization tests
 tests/text.lua          UTF-8, event and canvas tests
+tests/markdown.lua      Markdown parser and styled TextBox tests
 tests/smoke.lua         widget smoke test
 ```
 
@@ -356,3 +373,5 @@ binding 和 Terminal 提供 Up/Down 键映射，向 Widget 发送
 - PromptBox 采用单行水平滚动：保留完整输入内容，只显示光标附近的可视窗口。
 - UTF-8 编辑以 codepoint 为单位，尚未支持完整 grapheme cluster；组合音标、ZWJ
   emoji 和部分变体选择符可能无法作为一个整体移动、删除或计算宽度。
+- Markdown 目前只支持强调、斜体、粗体和一至四级标题；不支持代码、列表、链接、
+  表格、图片或完整 CommonMark 语义。

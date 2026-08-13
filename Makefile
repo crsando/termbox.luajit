@@ -39,6 +39,7 @@ check-deps:
 test: ltermbox.so check-deps
 	$(LUAJIT) tests/colors.lua
 	$(LUAJIT) tests/text.lua
+	$(LUAJIT) tests/markdown.lua
 	$(LUAJIT) tests/smoke.lua
 
 run: ltermbox.so check-deps

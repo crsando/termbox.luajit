@@ -1,4 +1,5 @@
 local Color = require("tui.color")
+local Markdown = require("tui.markdown")
 local Text = require("tui.text")
 local M = {}
 
@@ -14,6 +15,49 @@ end
 local TextBox = {}
 TextBox.__index = TextBox
 
+local default_markdown_theme = {
+    normal = {},
+    emphasis = {
+        fg = Color.rgb(116, 192, 252),
+        italic = true,
+    },
+    strong = {
+        fg = Color.rgb(255, 214, 102),
+        bold = true,
+    },
+    strong_emphasis = {
+        fg = Color.rgb(255, 214, 102),
+        bold = true,
+        italic = true,
+    },
+    heading = {
+        [1] = { fg = Color.rgb(255, 214, 102), bold = true },
+        [2] = { fg = Color.rgb(116, 192, 252), bold = true },
+        [3] = { fg = Color.rgb(105, 219, 124), bold = true },
+        [4] = { fg = Color.rgb(218, 119, 242), bold = true },
+    },
+}
+
+local function copy_style(style)
+    local result = {}
+
+    for key, value in pairs(style or {}) do
+        result[key] = value
+    end
+
+    return result
+end
+
+local function merge_style(base, overlay)
+    local result = copy_style(base)
+
+    for key, value in pairs(overlay or {}) do
+        result[key] = value
+    end
+
+    return result
+end
+
 function TextBox.new(opts)
     opts = opts or {}
     local follow_tail = opts.follow_tail == true
@@ -25,7 +69,50 @@ function TextBox.new(opts)
         max_scroll = 0,
         follow_tail = follow_tail,
         at_tail = follow_tail,
+        format = opts.format or "plain",
+        markdown_theme = opts.markdown_theme or default_markdown_theme,
+        parsed_lines = nil,
+        layout_width = nil,
+        layout_lines = nil,
     }, TextBox)
+end
+
+function TextBox:parse_markdown()
+    if self.format ~= "markdown" then
+        return nil
+    end
+
+    local parsed = {}
+
+    for line in (self.text .. "\n"):gmatch("(.-)\n") do
+        parsed[#parsed + 1] = Markdown.parse_line(line)
+    end
+
+    self.parsed_lines = parsed
+    self.layout_width = nil
+    self.layout_lines = nil
+    return parsed
+end
+
+function TextBox:layout_markdown(width)
+    if self.layout_width == width and self.layout_lines then
+        return self.layout_lines
+    end
+
+    local parsed = self.parsed_lines or self:parse_markdown() or {}
+    local lines = {}
+
+    for _, line in ipairs(parsed) do
+        local wrapped = Markdown.wrap_line(line, width)
+
+        for _, visual_line in ipairs(wrapped) do
+            lines[#lines + 1] = visual_line
+        end
+    end
+
+    self.layout_width = width
+    self.layout_lines = lines
+    return lines
 end
 
 function TextBox:update(msg)
@@ -60,6 +147,13 @@ function TextBox:update(msg)
 
     if msg.type == "set_text" then
         self.text = msg.text or ""
+        self.parsed_lines = nil
+        self.layout_width = nil
+        self.layout_lines = nil
+
+        if self.format == "markdown" then
+            self:parse_markdown()
+        end
 
         if not self.follow_tail then
             self.scroll = 0
@@ -77,11 +171,15 @@ function TextBox:view(canvas, rect)
     local content = inner(rect)
     local lines = {}
 
-    for line in (self.text .. "\n"):gmatch("(.-)\n") do
-        local wrapped = Text.wrap(line, content.width)
+    if self.format == "markdown" then
+        lines = self:layout_markdown(content.width)
+    else
+        for line in (self.text .. "\n"):gmatch("(.-)\n") do
+            local wrapped = Text.wrap(line, content.width)
 
-        for _, wrapped_line in ipairs(wrapped) do
-            lines[#lines + 1] = wrapped_line
+            for _, wrapped_line in ipairs(wrapped) do
+                lines[#lines + 1] = wrapped_line
+            end
         end
     end
 
@@ -101,9 +199,44 @@ function TextBox:view(canvas, rect)
         local line = lines[self.scroll + i]
 
         if line then
-            canvas:text(content.x, content.y + i - 1, line, {}, content.width)
+            if self.format == "markdown" then
+                local x = content.x
+                local used_width = 0
+
+                for _, segment in ipairs(line.segments) do
+                    local style = self:markdown_style(line.heading, segment.role)
+                    local drawn_width = canvas:text(
+                        x,
+                        content.y + i - 1,
+                        segment.text,
+                        style,
+                        content.width - used_width
+                    )
+                    x = x + drawn_width
+                    used_width = used_width + drawn_width
+                end
+            else
+                canvas:text(content.x, content.y + i - 1, line, {}, content.width)
+            end
         end
     end
+end
+
+function TextBox:markdown_style(heading, role)
+    local theme = self.markdown_theme
+    local style = theme.normal or {}
+
+    if heading then
+        style = theme.heading[heading] or style
+    else
+        style = theme[role] or style
+    end
+
+    if heading and role ~= "normal" then
+        style = merge_style(style, theme[role])
+    end
+
+    return style
 end
 
 local PromptBox = {}

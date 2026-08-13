@@ -139,7 +139,8 @@ function Terminal:present(canvas)
                     cell.ch,
                     self.colors:encode(cell.fg),
                     self.colors:encode(cell.bg),
-                    cell.bold
+                    cell.bold,
+                    cell.italic
                 )
             end
         end

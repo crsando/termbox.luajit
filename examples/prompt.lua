@@ -30,12 +30,15 @@ local Runtime = require("tui").Runtime
 local Terminal = require("tui.terminal")
 
 local prompt = Widgets.PromptBox.new({ prompt = "> " })
-local text = Widgets.TextBox.new({ follow_tail = true })
+local text = Widgets.TextBox.new({
+    follow_tail = true,
+    format = "markdown",
+})
 local terminal = Terminal.new({ mouse = true })
 
 local model = {
     messages = {
-        "Program: Ready. Type /exit or press Ctrl-C to quit.",
+        "Program: **Ready**. Type /exit or press Ctrl-C to quit.",
     },
 }
 

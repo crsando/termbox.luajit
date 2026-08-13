@@ -46,6 +46,7 @@ local function new_cell(ch, style)
         fg = Color.normalize(style.fg),
         bg = Color.normalize(style.bg),
         bold = style.bold,
+        italic = style.italic,
     }
 end
 

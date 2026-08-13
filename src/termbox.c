@@ -80,7 +80,15 @@ static int l_set_cell(lua_State *L) {
     size_t n; const char *s = luaL_checklstring(L, 3, &n);
     uintattr_t fg = check_attr(L, 4), bg = check_attr(L, 5);
     uint32_t ch;
-    uintattr_t attrs = lua_toboolean(L, 6) ? TB_BOLD : 0;
+    uintattr_t attrs = 0;
+
+    if (lua_toboolean(L, 6)) {
+        attrs |= TB_BOLD;
+    }
+
+    if (lua_toboolean(L, 7)) {
+        attrs |= TB_ITALIC;
+    }
 
     if (!decode_utf8_codepoint(s, n, &ch)) {
         return luaL_argerror(L, 3, "cell must contain exactly one valid UTF-8 codepoint");
