@@ -29,14 +29,101 @@ static uintattr_t check_attr(lua_State *L, int index) {
     return (uintattr_t)value;
 }
 
+static int decode_utf8_codepoint(const char *s, size_t n, uint32_t *ch) {
+    unsigned char lead;
+    size_t length;
+    size_t i;
+
+    if (n == 0) {
+        return 0;
+    }
+
+    lead = (unsigned char)s[0];
+
+    if (lead < 0x80) {
+        length = 1;
+    } else if (lead >= 0xc2 && lead <= 0xdf) {
+        length = 2;
+    } else if (lead >= 0xe0 && lead <= 0xef) {
+        length = 3;
+    } else if (lead >= 0xf0 && lead <= 0xf4) {
+        length = 4;
+    } else {
+        return 0;
+    }
+
+    if (n != length) {
+        return 0;
+    }
+
+    for (i = 1; i < length; ++i) {
+        unsigned char byte = (unsigned char)s[i];
+
+        if ((byte & 0xc0) != 0x80) {
+            return 0;
+        }
+    }
+
+    if ((length == 3 && lead == 0xe0 && (unsigned char)s[1] < 0xa0)
+        || (length == 3 && lead == 0xed && (unsigned char)s[1] >= 0xa0)
+        || (length == 4 && lead == 0xf0 && (unsigned char)s[1] < 0x90)
+        || (length == 4 && lead == 0xf4 && (unsigned char)s[1] >= 0x90))
+    {
+        return 0;
+    }
+
+    return tb_utf8_char_to_unicode(ch, s) == (int)length;
+}
+
 static int l_set_cell(lua_State *L) {
     int x = (int)luaL_checkinteger(L, 1), y = (int)luaL_checkinteger(L, 2);
     size_t n; const char *s = luaL_checklstring(L, 3, &n);
     uintattr_t fg = check_attr(L, 4), bg = check_attr(L, 5);
-    uint32_t ch = n ? (unsigned char)s[0] : ' ';
+    uint32_t ch;
     uintattr_t attrs = lua_toboolean(L, 6) ? TB_BOLD : 0;
+
+    if (!decode_utf8_codepoint(s, n, &ch)) {
+        return luaL_argerror(L, 3, "cell must contain exactly one valid UTF-8 codepoint");
+    }
+
     tb_set_cell(x, y, ch, fg | attrs, bg);
     return 0;
+}
+
+static int l_wcwidth(lua_State *L) {
+    lua_Number value = luaL_checknumber(L, 1);
+    uint32_t ch;
+
+    if (value != value
+        || value < 0
+        || value > 0x10ffff
+        || value != (lua_Number)(uint32_t)value
+        || (value >= 0xd800 && value <= 0xdfff))
+    {
+        return luaL_argerror(L, 1, "codepoint must be a valid Unicode scalar value");
+    }
+
+    ch = (uint32_t)value;
+    lua_pushinteger(L, tb_wcwidth(ch));
+    return 1;
+}
+
+static int l_set_mouse_enabled(lua_State *L) {
+    int mode = tb_set_input_mode(TB_INPUT_CURRENT);
+
+    if (mode < 0) {
+        lua_pushinteger(L, mode);
+        return 1;
+    }
+
+    if (lua_toboolean(L, 1)) {
+        mode |= TB_INPUT_MOUSE;
+    } else {
+        mode &= ~TB_INPUT_MOUSE;
+    }
+
+    lua_pushinteger(L, tb_set_input_mode(mode));
+    return 1;
 }
 
 static int output_mode(const char *name) {
@@ -103,6 +190,12 @@ static int l_poll(lua_State *L) {
         lua_pushinteger(L, event.key); lua_setfield(L, -2, "key");
         lua_pushinteger(L, event.ch); lua_setfield(L, -2, "ch");
         lua_pushinteger(L, event.mod); lua_setfield(L, -2, "mod");
+    } else if (event.type == TB_EVENT_MOUSE) {
+        lua_pushliteral(L, "mouse"); lua_setfield(L, -2, "type");
+        lua_pushinteger(L, event.key); lua_setfield(L, -2, "key");
+        lua_pushinteger(L, event.x); lua_setfield(L, -2, "x");
+        lua_pushinteger(L, event.y); lua_setfield(L, -2, "y");
+        lua_pushinteger(L, event.mod); lua_setfield(L, -2, "mod");
     } else {
         lua_pushliteral(L, "other"); lua_setfield(L, -2, "type");
     }
@@ -113,7 +206,8 @@ static const luaL_Reg funcs[] = {
     {"init", l_init}, {"shutdown", l_shutdown}, {"width", l_width}, {"height", l_height},
     {"clear", l_clear}, {"present", l_present}, {"set_cursor", l_set_cursor}, {"hide_cursor", l_hide_cursor},
     {"set_cell", l_set_cell}, {"set_output_mode", l_set_output_mode}, {"output_mode", l_output_mode},
-    {"has_truecolor", l_has_truecolor}, {"attr_width", l_attr_width}, {"poll", l_poll}, {NULL, NULL}
+    {"has_truecolor", l_has_truecolor}, {"attr_width", l_attr_width}, {"wcwidth", l_wcwidth},
+    {"set_mouse_enabled", l_set_mouse_enabled}, {"poll", l_poll}, {NULL, NULL}
 };
 
 int luaopen_ltermbox(lua_State *L) {
@@ -124,11 +218,16 @@ int luaopen_ltermbox(lua_State *L) {
 #endif
     lua_pushinteger(L, TB_EVENT_KEY); lua_setfield(L, -2, "EVENT_KEY");
     lua_pushinteger(L, TB_EVENT_RESIZE); lua_setfield(L, -2, "EVENT_RESIZE");
+    lua_pushinteger(L, TB_EVENT_MOUSE); lua_setfield(L, -2, "EVENT_MOUSE");
+    lua_pushinteger(L, TB_KEY_ARROW_UP); lua_setfield(L, -2, "KEY_ARROW_UP");
+    lua_pushinteger(L, TB_KEY_ARROW_DOWN); lua_setfield(L, -2, "KEY_ARROW_DOWN");
     lua_pushinteger(L, TB_KEY_ARROW_LEFT); lua_setfield(L, -2, "KEY_ARROW_LEFT");
     lua_pushinteger(L, TB_KEY_ARROW_RIGHT); lua_setfield(L, -2, "KEY_ARROW_RIGHT");
     lua_pushinteger(L, TB_KEY_BACKSPACE); lua_setfield(L, -2, "KEY_BACKSPACE");
     lua_pushinteger(L, TB_KEY_BACKSPACE2); lua_setfield(L, -2, "KEY_BACKSPACE2");
     lua_pushinteger(L, TB_KEY_ENTER); lua_setfield(L, -2, "KEY_ENTER");
+    lua_pushinteger(L, TB_KEY_MOUSE_WHEEL_UP); lua_setfield(L, -2, "KEY_MOUSE_WHEEL_UP");
+    lua_pushinteger(L, TB_KEY_MOUSE_WHEEL_DOWN); lua_setfield(L, -2, "KEY_MOUSE_WHEEL_DOWN");
     lua_pushnumber(L, (lua_Number)TB_BRIGHT); lua_setfield(L, -2, "ATTR_BRIGHT");
     lua_pushnumber(L, (lua_Number)TB_HI_BLACK); lua_setfield(L, -2, "ATTR_HI_BLACK");
     return 1;

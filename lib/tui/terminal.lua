@@ -1,9 +1,12 @@
 local native = require("ltermbox")
 local ColorEncoder = require("tui.color_encoder")
+local Text = require("tui.text")
 local Terminal = {}
 Terminal.__index = Terminal
 
 local keys = {
+    [native.KEY_ARROW_UP] = "up",
+    [native.KEY_ARROW_DOWN] = "down",
     [native.KEY_ARROW_LEFT] = "left",
     [native.KEY_ARROW_RIGHT] = "right",
     [native.KEY_BACKSPACE] = "backspace",
@@ -31,9 +34,18 @@ function Terminal.new(opts)
         error("termbox output mode failed: " .. colors.mode)
     end
 
+    local mouse_enabled = opts.mouse == true
+    local mouse_result = native.set_mouse_enabled(mouse_enabled)
+
+    if mouse_result ~= 0 then
+        native.shutdown()
+        error("termbox mouse mode failed")
+    end
+
     return setmetatable({
         colors = colors,
         color_mode = colors.mode,
+        mouse_enabled = mouse_enabled,
     }, Terminal)
 end
 
@@ -41,9 +53,7 @@ function Terminal:size()
     return native.width(), native.height()
 end
 
-function Terminal:poll(timeout)
-    local event = native.poll(timeout or 0)
-
+function Terminal.normalize_event(event)
     if not event then
         return nil
     end
@@ -52,7 +62,30 @@ function Terminal:poll(timeout)
         return event
     end
 
+    if event.type == "mouse" then
+        local action
+
+        if event.key == native.KEY_MOUSE_WHEEL_UP then
+            action = "wheel_up"
+        elseif event.key == native.KEY_MOUSE_WHEEL_DOWN then
+            action = "wheel_down"
+        end
+
+        if action then
+            return {
+                type = "mouse",
+                action = action,
+                x = event.x,
+                y = event.y,
+                raw = event.key,
+            }
+        end
+
+        return nil
+    end
+
     if event.type == "key" then
+        local ch = event.ch or 0
         local code = keys[event.key]
 
         if code then
@@ -63,18 +96,18 @@ function Terminal:poll(timeout)
             }
         end
 
-        if event.ch == 3 or event.key == 3 then
+        if ch == 3 or event.key == 3 then
             return {
                 type = "key",
                 code = "ctrl-c",
-                raw = event.key ~= 0 and event.key or event.ch,
+                raw = event.key ~= 0 and event.key or ch,
             }
         end
 
-        if event.ch >= 32 and event.ch <= 126 then
+        if ch ~= 0 and native.wcwidth(ch) > 0 then
             return {
                 type = "text",
-                text = string.char(event.ch),
+                text = Text.char(ch),
             }
         end
 
@@ -88,20 +121,27 @@ function Terminal:poll(timeout)
     return nil
 end
 
+function Terminal:poll(timeout)
+    return Terminal.normalize_event(native.poll(timeout or 0))
+end
+
 function Terminal:present(canvas)
     native.clear()
 
     for y = 0, canvas.height - 1 do
         for x = 0, canvas.width - 1 do
             local cell = canvas.cells[y][x]
-            native.set_cell(
-                x,
-                y,
-                cell.ch,
-                self.colors:encode(cell.fg),
-                self.colors:encode(cell.bg),
-                cell.bold
-            )
+
+            if not cell.continuation then
+                native.set_cell(
+                    x,
+                    y,
+                    cell.ch,
+                    self.colors:encode(cell.fg),
+                    self.colors:encode(cell.bg),
+                    cell.bold
+                )
+            end
         end
     end
 

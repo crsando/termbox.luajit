@@ -1,8 +1,12 @@
-.PHONY: all test clean run
+.PHONY: all check-deps test clean run install
 
 LUAJIT ?= luajit
 CC ?= cc
 PKG_CONFIG ?= pkg-config
+PREFIX ?= /usr/local
+DESTDIR ?=
+LUA_LIBDIR ?= $(PREFIX)/lib/lua/5.1
+LUA_SHAREDIR ?= $(PREFIX)/share/lua/5.1
 LUAJIT_PREFIX ?= $(shell command -v $(LUAJIT) >/dev/null 2>&1 && dirname "$$(dirname "$$(command -v $(LUAJIT))")")
 LUAJIT_CFLAGS ?= $(shell $(PKG_CONFIG) --cflags luajit 2>/dev/null)
 LUAJIT_LIBS ?= $(shell $(PKG_CONFIG) --libs luajit 2>/dev/null)
@@ -29,12 +33,21 @@ all: ltermbox.so
 ltermbox.so: src/termbox.c vendor/termbox.h
 	$(CC) $(CFLAGS) $(LUAJIT_CFLAGS) $(LDFLAGS) -Ivendor -o $@ $< $(LUAJIT_LIBS)
 
-test: ltermbox.so
+check-deps:
+	$(LUAJIT) -e 'assert(require("lua-utf8"))'
+
+test: ltermbox.so check-deps
 	$(LUAJIT) tests/colors.lua
+	$(LUAJIT) tests/text.lua
 	$(LUAJIT) tests/smoke.lua
 
-run: ltermbox.so
+run: ltermbox.so check-deps
 	$(LUAJIT) examples/prompt.lua
+
+install: ltermbox.so
+	install -d $(DESTDIR)$(LUA_LIBDIR) $(DESTDIR)$(LUA_SHAREDIR)/tui
+	install -m 755 ltermbox.so $(DESTDIR)$(LUA_LIBDIR)/ltermbox.so
+	install -m 644 lib/tui/*.lua $(DESTDIR)$(LUA_SHAREDIR)/tui/
 
 clean:
 	rm -f ltermbox.so

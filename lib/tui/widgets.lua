@@ -1,4 +1,5 @@
 local Color = require("tui.color")
+local Text = require("tui.text")
 local M = {}
 
 local function inner(rect)
@@ -14,22 +15,38 @@ local TextBox = {}
 TextBox.__index = TextBox
 
 function TextBox.new(opts)
+    opts = opts or {}
+    local follow_tail = opts.follow_tail == true
+
     return setmetatable({
         text = opts.text or "",
         scroll = 0,
-        follow_tail = opts.follow_tail or false,
+        scroll_step = opts.scroll_step or 3,
+        max_scroll = 0,
+        follow_tail = follow_tail,
+        at_tail = follow_tail,
     }, TextBox)
 end
 
 function TextBox:update(msg)
     if msg.type == "scroll" then
-        self.scroll = math.max(0, self.scroll + (msg.delta or 0))
+        local delta = msg.delta or 0
+        self.scroll = math.max(0, math.min(self.max_scroll, self.scroll + delta))
+
+        if self.follow_tail then
+            self.at_tail = self.scroll >= self.max_scroll
+        end
+
         return true
     end
 
     if msg.type == "set_text" then
         self.text = msg.text or ""
-        self.scroll = 0
+
+        if not self.follow_tail then
+            self.scroll = 0
+        end
+
         return true
     end
 
@@ -43,27 +60,30 @@ function TextBox:view(canvas, rect)
     local lines = {}
 
     for line in (self.text .. "\n"):gmatch("(.-)\n") do
-        if content.width == 0 then
-            break
-        end
+        local wrapped = Text.wrap(line, content.width)
 
-        while #line > content.width do
-            table.insert(lines, line:sub(1, content.width))
-            line = line:sub(content.width + 1)
+        for _, wrapped_line in ipairs(wrapped) do
+            lines[#lines + 1] = wrapped_line
         end
-
-        table.insert(lines, line)
     end
 
-    if self.follow_tail then
-        self.scroll = math.max(0, #lines - content.height)
+    self.max_scroll = math.max(0, #lines - content.height)
+
+    if self.follow_tail and self.at_tail then
+        self.scroll = self.max_scroll
+    else
+        self.scroll = math.max(0, math.min(self.scroll, self.max_scroll))
+    end
+
+    if self.follow_tail and self.scroll >= self.max_scroll then
+        self.at_tail = true
     end
 
     for i = 1, content.height do
         local line = lines[self.scroll + i]
 
         if line then
-            canvas:text(content.x, content.y + i - 1, line, {})
+            canvas:text(content.x, content.y + i - 1, line, {}, content.width)
         end
     end
 end
@@ -72,22 +92,69 @@ local PromptBox = {}
 PromptBox.__index = PromptBox
 
 function PromptBox.new(opts)
+    opts = opts or {}
+
     return setmetatable({
         prompt = opts.prompt or "> ",
         value = "",
         cursor = 0,
         scroll = 0,
         history = opts.history or {},
+        history_index = nil,
+        history_draft = nil,
         submitted = nil,
     }, PromptBox)
 end
 
+function PromptBox:leave_history()
+    self.history_index = nil
+    self.history_draft = nil
+end
+
+function PromptBox:show_history(index)
+    self.history_index = index
+    self.value = self.history[index]
+    self.cursor = Text.length(self.value)
+    self.scroll = 0
+end
+
+function PromptBox:history_up()
+    if #self.history == 0 then
+        return
+    end
+
+    if not self.history_index then
+        self.history_draft = self.value
+        self:show_history(#self.history)
+    elseif self.history_index > 1 then
+        self:show_history(self.history_index - 1)
+    end
+end
+
+function PromptBox:history_down()
+    if not self.history_index then
+        return
+    end
+
+    if self.history_index < #self.history then
+        self:show_history(self.history_index + 1)
+        return
+    end
+
+    self.value = self.history_draft or ""
+    self.cursor = Text.length(self.value)
+    self.scroll = 0
+    self:leave_history()
+end
+
 function PromptBox:update(msg)
     if msg.type == "text" then
-        self.value = self.value:sub(1, self.cursor)
+        self:leave_history()
+        local inserted_length = Text.length(msg.text)
+        self.value = Text.prefix(self.value, self.cursor)
             .. msg.text
-            .. self.value:sub(self.cursor + 1)
-        self.cursor = self.cursor + #msg.text
+            .. Text.suffix(self.value, self.cursor + 1)
+        self.cursor = self.cursor + inserted_length
         return true
     end
 
@@ -98,25 +165,32 @@ function PromptBox:update(msg)
     if msg.code == "left" then
         self.cursor = math.max(0, self.cursor - 1)
     elseif msg.code == "right" then
-        self.cursor = math.min(#self.value, self.cursor + 1)
+        self.cursor = math.min(Text.length(self.value), self.cursor + 1)
+    elseif msg.code == "up" then
+        self:history_up()
+    elseif msg.code == "down" then
+        self:history_down()
     elseif msg.code == "ctrl-a" then
         self.cursor = 0
     elseif msg.code == "ctrl-e" then
-        self.cursor = #self.value
+        self.cursor = Text.length(self.value)
     elseif msg.code == "backspace" and self.cursor > 0 then
-        self.value = self.value:sub(1, self.cursor - 1)
-            .. self.value:sub(self.cursor + 1)
+        self:leave_history()
+        self.value = Text.prefix(self.value, self.cursor - 1)
+            .. Text.suffix(self.value, self.cursor + 1)
         self.cursor = self.cursor - 1
     elseif msg.code == "enter" then
         self.submitted = self.value
 
-        if #self.value > 0 then
+        if self.value ~= "" then
             table.insert(self.history, self.value)
         end
 
         local submitted = self.value
         self.value = ""
         self.cursor = 0
+        self.scroll = 0
+        self:leave_history()
         return submitted
     else
         return false
@@ -128,18 +202,27 @@ end
 function PromptBox:ensure_cursor_visible(input_width)
     if input_width <= 0 then
         self.scroll = self.cursor
-        return
+        return 0
     end
 
     if self.cursor < self.scroll then
         self.scroll = self.cursor
     end
 
-    if self.cursor > self.scroll + input_width - 1 then
-        self.scroll = self.cursor - input_width + 1
+    local characters = Text.characters(self.value)
+    local cursor_width = 0
+
+    for index = self.scroll + 1, self.cursor do
+        cursor_width = cursor_width + characters[index].width
     end
 
-    self.scroll = math.max(0, self.scroll)
+    while self.scroll < self.cursor and cursor_width >= input_width do
+        self.scroll = self.scroll + 1
+        cursor_width = cursor_width - characters[self.scroll].width
+    end
+
+    self.scroll = math.max(0, math.min(self.scroll, Text.length(self.value)))
+    return cursor_width
 end
 
 function PromptBox:view(canvas, rect)
@@ -150,33 +233,36 @@ function PromptBox:view(canvas, rect)
     canvas:fill(rect, style)
 
     local content = inner(rect)
-    local prompt_width = math.min(#self.prompt, content.width)
+    local visible_prompt, prompt_width = Text.take(self.prompt, 0, content.width)
     local input_width = math.max(0, content.width - prompt_width)
 
-    self:ensure_cursor_visible(input_width)
+    local cursor_width = self:ensure_cursor_visible(input_width)
 
-    if prompt_width > 0 then
+    if content.height > 0 and prompt_width > 0 then
         canvas:text(
             content.x,
             content.y,
-            self.prompt:sub(1, prompt_width),
+            visible_prompt,
             style
         )
     end
 
-    if input_width > 0 then
+    if content.height > 0 and input_width > 0 then
+        local visible_value = Text.take(self.value, self.scroll, input_width)
         canvas:text(
             content.x + prompt_width,
             content.y,
-            self.value:sub(self.scroll + 1, self.scroll + input_width),
+            visible_value,
             style
         )
     end
 
-    if content.width > 0 then
+    if content.width > 0 and content.height > 0 then
         canvas:cursor_at(
             math.min(
-                content.x + prompt_width + self.cursor - self.scroll,
+                content.x
+                    + prompt_width
+                    + cursor_width,
                 content.x + content.width - 1
             ),
             content.y

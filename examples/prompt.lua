@@ -31,7 +31,7 @@ local Terminal = require("tui.terminal")
 
 local prompt = Widgets.PromptBox.new({ prompt = "> " })
 local text = Widgets.TextBox.new({ follow_tail = true })
-local terminal = Terminal.new()
+local terminal = Terminal.new({ mouse = true })
 
 local model = {
     messages = {
@@ -52,6 +52,14 @@ local function quit_command()
     end
 end
 
+local function contains(rect, x, y)
+    return rect
+        and x >= rect.x
+        and y >= rect.y
+        and x < rect.x + rect.width
+        and y < rect.y + rect.height
+end
+
 function model.update(self, msg)
     if msg.type == "init" then
         self:refresh_text()
@@ -60,6 +68,21 @@ function model.update(self, msg)
 
     if msg.type == "key" and msg.code == "ctrl-c" then
         return { quit_command() }
+    end
+
+    if msg.type == "resize" then
+        self.text_area = nil
+        return {}
+    end
+
+    if msg.type == "mouse" and contains(self.text_area, msg.x, msg.y) then
+        if msg.action == "wheel_up" then
+            text:update({ type = "scroll", delta = -text.scroll_step })
+        elseif msg.action == "wheel_down" then
+            text:update({ type = "scroll", delta = text.scroll_step })
+        end
+
+        return {}
     end
 
     if msg.type == "text" or msg.type == "key" then
@@ -93,6 +116,7 @@ function model.view(self, canvas)
         width = width,
         height = canvas.height,
     })
+    self.text_area = areas.text
 
     text:view(canvas, areas.text)
     prompt:view(canvas, areas.prompt)

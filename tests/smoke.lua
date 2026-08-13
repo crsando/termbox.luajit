@@ -56,4 +56,109 @@ assert(long_prompt.cursor == 8)
 assert(long_prompt.scroll == 7)
 assert(prompt_canvas.cursor.x == 4)
 
+local unicode_prompt = Widgets.PromptBox.new({ prompt = "你>" })
+unicode_prompt:update({ type = "text", text = "中a文" })
+assert(unicode_prompt.cursor == 3)
+unicode_prompt:update({ type = "key", code = "left" })
+unicode_prompt:update({ type = "key", code = "backspace" })
+assert(unicode_prompt.value == "中文")
+assert(unicode_prompt.cursor == 1)
+
+local unicode_canvas = Canvas.new(12, 3)
+unicode_prompt:view(unicode_canvas, {
+    x = 0,
+    y = 0,
+    width = 12,
+    height = 3,
+})
+assert(unicode_canvas.cells[1][1].ch == "你")
+assert(unicode_canvas.cells[1][2].continuation)
+assert(unicode_canvas.cells[1][3].ch == ">")
+assert(unicode_canvas.cells[1][4].ch == "中")
+assert(unicode_canvas.cursor.x == 6)
+
+local narrow_unicode_canvas = Canvas.new(8, 3)
+unicode_prompt:update({ type = "key", code = "ctrl-e" })
+unicode_prompt:view(narrow_unicode_canvas, {
+    x = 0,
+    y = 0,
+    width = 8,
+    height = 3,
+})
+assert(unicode_prompt.scroll == 1)
+assert(narrow_unicode_canvas.cells[1][4].ch == "文")
+assert(narrow_unicode_canvas.cursor.x == 6)
+
+local history = { "first", "中文" }
+local history_prompt = Widgets.PromptBox.new({ history = history })
+history_prompt:update({ type = "text", text = "draft" })
+history_prompt:update({ type = "key", code = "up" })
+assert(history_prompt.value == "中文")
+history_prompt:update({ type = "key", code = "up" })
+assert(history_prompt.value == "first")
+history_prompt:update({ type = "key", code = "up" })
+assert(history_prompt.value == "first")
+history_prompt:update({ type = "key", code = "down" })
+assert(history_prompt.value == "中文")
+history_prompt:update({ type = "key", code = "down" })
+assert(history_prompt.value == "draft")
+assert(history_prompt.history_index == nil)
+
+history_prompt:update({ type = "key", code = "up" })
+history_prompt:update({ type = "text", text = "!" })
+assert(history_prompt.value == "中文!")
+assert(history_prompt.history_index == nil)
+assert(history[2] == "中文")
+assert(history_prompt:update({ type = "key", code = "enter" }) == "中文!")
+assert(history[#history] == "中文!")
+
+local scrolling = Widgets.TextBox.new({
+    text = "one\ntwo\nthree\nfour\nfive",
+    follow_tail = true,
+})
+local scrolling_canvas = Canvas.new(12, 4)
+local scrolling_rect = { x = 0, y = 0, width = 12, height = 4 }
+scrolling:view(scrolling_canvas, scrolling_rect)
+assert(scrolling.max_scroll == 3)
+assert(scrolling.scroll == 3)
+
+scrolling:update({ type = "scroll", delta = -3 })
+assert(scrolling.scroll == 0)
+assert(not scrolling.at_tail)
+scrolling:update({
+    type = "set_text",
+    text = "one\ntwo\nthree\nfour\nfive\nsix",
+})
+scrolling:view(Canvas.new(12, 4), scrolling_rect)
+assert(scrolling.max_scroll == 4)
+assert(scrolling.scroll == 0)
+
+scrolling:update({ type = "scroll", delta = 20 })
+assert(scrolling.scroll == 4)
+assert(scrolling.at_tail)
+scrolling:update({
+    type = "set_text",
+    text = "one\ntwo\nthree\nfour\nfive\nsix\nseven",
+})
+scrolling:view(Canvas.new(12, 4), scrolling_rect)
+assert(scrolling.max_scroll == 5)
+assert(scrolling.scroll == 5)
+
+local unicode_text_box = Widgets.TextBox.new({ text = "A中文B" })
+local unicode_text_canvas = Canvas.new(7, 4)
+unicode_text_box:view(unicode_text_canvas, {
+    x = 0,
+    y = 0,
+    width = 7,
+    height = 4,
+})
+assert(unicode_text_canvas.cells[1][1].ch == "A")
+assert(unicode_text_canvas.cells[1][2].ch == "中")
+assert(unicode_text_canvas.cells[2][1].ch == "B")
+
+local tiny_prompt = Widgets.PromptBox.new({ prompt = "> " })
+local tiny_canvas = Canvas.new(6, 2)
+tiny_prompt:view(tiny_canvas, { x = 0, y = 0, width = 6, height = 2 })
+assert(tiny_canvas.cursor == nil)
+
 print("smoke: ok")
