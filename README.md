@@ -287,25 +287,26 @@ termbox 提供 `TB_INPUT_MOUSE`、`TB_EVENT_MOUSE`、滚轮按键以及鼠标坐
 termbox mouse event
     -> binding { type = "mouse", key = ..., x = ..., y = ... }
     -> Terminal { type = "mouse", action = "wheel_up|wheel_down", x, y }
-    -> model routes event
-    -> TextBox { type = "scroll", delta = ... }
+    -> model gives mouse events to TextBox first
+    -> TextBox updates its scroll position
 ```
 
 具体设计如下：
 
 - binding 增加输入模式配置及鼠标相关常量，并在鼠标事件中返回 `key`、`x`、`y`。
   `Terminal.new({ mouse = true })` 显式开启鼠标报告，避免不使用鼠标的应用改变终端
-  输入行为；demo 将开启该选项。
+  输入行为；demo 已开启该选项。组合使用 TextBox 和 PromptBox 时必须开启鼠标报告，
+  否则部分终端会把滚轮模拟成普通 Up/Down，应用无法将其与真实方向键区分。
 - Terminal 将滚轮事件归一化为稳定的框架消息，坐标继续使用当前 Canvas 的 0-based
-  坐标。应用 model 负责命中测试和事件路由，TextBox 不依赖全局终端，也不自行读取
-  输入。
+  坐标。组合使用 TextBox 和 PromptBox 时，应用 model 优先把所有滚轮消息交给
+  TextBox 并结束该消息的分发；PromptBox 只接收 `text` 和 `key` 消息，不接收滚轮。
 - TextBox 继续使用首个可见行作为滚动状态，并根据内容行数和 viewport 高度把位置
   限制在 `0..max_scroll`。每个滚轮刻度默认滚动 3 行，后续可通过构造参数调整。
 - `follow_tail` 拆分为“允许自动追尾”的配置和“当前是否位于末尾”的运行状态。
   用户向上滚动后暂停追尾，新内容到达时保持阅读位置；用户滚动回最底部后自动恢复
   追尾。这样重新渲染不会立即把用户拉回最新记录。
-- demo 只在指针位于 TextBox 区域时转发滚轮事件，PromptBox 区域的滚轮事件不改变
-  历史视图。布局尺寸变化后重新计算并限制滚动位置。
+- demo 将滚轮统一用于 TextBox 历史视图，不受鼠标当前位于 TextBox 或 PromptBox
+  区域的影响。布局尺寸变化后重新计算并限制滚动位置。
 
 验收标准：滚轮向上和向下方向正确；不能滚过开头或末尾；查看旧记录时追加内容不会
 跳回末尾；滚回底部后新内容继续自动追尾；鼠标未启用时现有键盘操作不受影响。

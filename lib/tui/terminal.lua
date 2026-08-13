@@ -62,25 +62,25 @@ function Terminal.normalize_event(event)
         return event
     end
 
+    local mouse_action
+
+    if event.key == native.KEY_MOUSE_WHEEL_UP then
+        mouse_action = "wheel_up"
+    elseif event.key == native.KEY_MOUSE_WHEEL_DOWN then
+        mouse_action = "wheel_down"
+    end
+
+    if mouse_action then
+        return {
+            type = "mouse",
+            action = mouse_action,
+            x = event.x,
+            y = event.y,
+            raw = event.key,
+        }
+    end
+
     if event.type == "mouse" then
-        local action
-
-        if event.key == native.KEY_MOUSE_WHEEL_UP then
-            action = "wheel_up"
-        elseif event.key == native.KEY_MOUSE_WHEEL_DOWN then
-            action = "wheel_down"
-        end
-
-        if action then
-            return {
-                type = "mouse",
-                action = action,
-                x = event.x,
-                y = event.y,
-                raw = event.key,
-            }
-        end
-
         return nil
     end
 

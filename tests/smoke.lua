@@ -144,6 +144,22 @@ scrolling:view(Canvas.new(12, 4), scrolling_rect)
 assert(scrolling.max_scroll == 5)
 assert(scrolling.scroll == 5)
 
+assert(scrolling:update({ type = "mouse", action = "wheel_up" }))
+assert(scrolling.scroll == 2)
+assert(not scrolling.at_tail)
+assert(scrolling:update({ type = "mouse", action = "wheel_down" }))
+assert(scrolling.scroll == 5)
+assert(scrolling.at_tail)
+
+local ignored_prompt = Widgets.PromptBox.new({ history = { "previous" } })
+ignored_prompt:update({ type = "text", text = "draft" })
+assert(not ignored_prompt:update({
+    type = "mouse",
+    action = "wheel_up",
+}))
+assert(ignored_prompt.value == "draft")
+assert(ignored_prompt.history_index == nil)
+
 local unicode_text_box = Widgets.TextBox.new({ text = "A中文B" })
 local unicode_text_canvas = Canvas.new(7, 4)
 unicode_text_box:view(unicode_text_canvas, {

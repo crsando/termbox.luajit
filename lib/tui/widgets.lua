@@ -29,6 +29,24 @@ function TextBox.new(opts)
 end
 
 function TextBox:update(msg)
+    if msg.type == "mouse" then
+        if msg.action == "wheel_up" then
+            return self:update({
+                type = "scroll",
+                delta = -self.scroll_step,
+            })
+        end
+
+        if msg.action == "wheel_down" then
+            return self:update({
+                type = "scroll",
+                delta = self.scroll_step,
+            })
+        end
+
+        return false
+    end
+
     if msg.type == "scroll" then
         local delta = msg.delta or 0
         self.scroll = math.max(0, math.min(self.max_scroll, self.scroll + delta))

@@ -64,6 +64,14 @@ assert(wheel_event.action == "wheel_up")
 assert(wheel_event.x == 4)
 assert(wheel_event.y == 2)
 
+local key_typed_wheel = Terminal.normalize_event({
+    type = "key",
+    key = native.KEY_MOUSE_WHEEL_DOWN,
+    ch = 0,
+})
+assert(key_typed_wheel.type == "mouse")
+assert(key_typed_wheel.action == "wheel_down")
+
 local canvas = Canvas.new(8, 3)
 assert(canvas:text(0, 1, "A中B", {}) == 4)
 assert(canvas.cells[1][0].ch == "A")
