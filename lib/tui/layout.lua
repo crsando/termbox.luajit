@@ -65,20 +65,22 @@ local function new_layout(direction, items)
             local flex = 0
             local variable = {}
             local last_flex
-            local ids = {}
+            local keys = {}
+            local used_keys = {}
 
             for index, item in ipairs(self.items) do
                 if type(item) ~= "table" then
                     error("layout item must be a table", 2)
                 end
 
-                if item.id ~= nil then
-                    if ids[item.id] then
-                        error("duplicate layout item id: " .. tostring(item.id), 2)
-                    end
+                local key = item.id == nil and index or item.id
 
-                    ids[item.id] = true
+                if used_keys[key] then
+                    error("duplicate layout item key: " .. tostring(key), 2)
                 end
+
+                keys[index] = key
+                used_keys[key] = true
 
                 if item.fixed ~= nil then
                     fixed = fixed + check_integer(
@@ -138,7 +140,7 @@ local function new_layout(direction, items)
                     }
                 end
 
-                result[item.id or index] = child
+                result[keys[index]] = child
                 offset = offset + size
             end
 

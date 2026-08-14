@@ -56,6 +56,19 @@ assert(long_prompt.cursor == 8)
 assert(long_prompt.scroll == 7)
 assert(prompt_canvas.cursor.x == 4)
 
+local wide_prompt_canvas = Canvas.new(20, 4)
+long_prompt:view(wide_prompt_canvas, {
+    x = 0,
+    y = 0,
+    width = 20,
+    height = 3,
+})
+
+assert(long_prompt.scroll == 0)
+assert(wide_prompt_canvas.cells[1][3].ch == "a")
+assert(wide_prompt_canvas.cells[1][10].ch == "h")
+assert(wide_prompt_canvas.cursor.x == 11)
+
 local unicode_prompt = Widgets.PromptBox.new({ prompt = "你>" })
 unicode_prompt:update({ type = "text", text = "中a文" })
 assert(unicode_prompt.cursor == 3)
@@ -176,5 +189,26 @@ local tiny_prompt = Widgets.PromptBox.new({ prompt = "> " })
 local tiny_canvas = Canvas.new(6, 2)
 tiny_prompt:view(tiny_canvas, { x = 0, y = 0, width = 6, height = 2 })
 assert(tiny_canvas.cursor == nil)
+
+local resized_prompt = Widgets.PromptBox.new({ prompt = "> " })
+resized_prompt:update({ type = "text", text = "abcdef" })
+resized_prompt:view(Canvas.new(4, 3), {
+    x = 0,
+    y = 0,
+    width = 4,
+    height = 3,
+})
+assert(resized_prompt.scroll == 6)
+
+local resized_canvas = Canvas.new(20, 3)
+resized_prompt:view(resized_canvas, {
+    x = 0,
+    y = 0,
+    width = 20,
+    height = 3,
+})
+assert(resized_prompt.scroll == 0)
+assert(resized_canvas.cells[1][3].ch == "a")
+assert(resized_canvas.cursor.x == 9)
 
 print("smoke: ok")

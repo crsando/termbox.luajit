@@ -163,7 +163,8 @@ local box = Widgets.TextBox.new({
 `Layout.fixed(id, size)` 保留声明尺寸；`Layout.flex(id, weight)` 按权重分配扣除 fixed
 后的剩余空间，整数舍入余量只分给最后一个 flex item。所有 item 都是 fixed 且总尺寸
 不足时，尾部空间保持未分配；总尺寸超过容器时按声明顺序裁剪，任何子区域都不会越过
-容器末端。fixed size 必须是非负整数，flex weight 必须是有限正数。
+容器末端。未提供 id 时使用 item 的声明位置作为结果键；所有结果键必须唯一。fixed
+size 必须是非负整数，flex weight 必须是有限正数。
 
 ## 颜色
 
@@ -280,7 +281,6 @@ tests/terminal.lua      terminal adapter error handling tests
 tests/text.lua          UTF-8, event and canvas tests
 tests/markdown.lua      Markdown parser and styled TextBox tests
 tests/smoke.lua         widget smoke test
-.github/workflows/ci.yml macOS/Linux build and test matrix
 ```
 
 ## UTF-8、历史和滚动设计
@@ -413,7 +413,6 @@ binding 和 Terminal 提供 Up/Down 键映射，向 Widget 发送
 - `make test` 覆盖依赖诊断、颜色、UTF-8、Markdown、Layout、Terminal、Runtime 和
   Widget 行为。
 - `make check` 在测试前启用 GCC/Clang 严格警告，macOS 和 Linux 使用同一入口。
-- GitHub Actions 在 `macos-latest` 和 `ubuntu-latest` 上执行 `make check`。
 - 真实终端发布检查仍需分别在 macOS 与 Linux/WSL 验证键盘、鼠标、resize、颜色和
   终端异常后的恢复行为。
 

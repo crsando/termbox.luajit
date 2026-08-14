@@ -71,5 +71,18 @@ assert(not pcall(function()
         Layout.flex("duplicate"),
     }):split({ width = 1, height = 1 })
 end))
+assert(not pcall(function()
+    Layout.horizontal({
+        Layout.fixed(2, 1),
+        Layout.flex(nil),
+    }):split({ width = 3, height = 1 })
+end))
+
+local false_id = Layout.horizontal({
+    Layout.fixed(false, 1),
+    Layout.flex("rest"),
+}):split({ width = 3, height = 1 })
+assert(false_id[false].width == 1)
+assert(false_id.rest.width == 2)
 
 print("layout: ok")

@@ -313,6 +313,7 @@ function PromptBox.new(opts)
         history_index = nil,
         history_draft = nil,
         submitted = nil,
+        last_input_width = nil,
     }, PromptBox)
 end
 
@@ -410,6 +411,9 @@ function PromptBox:update(msg)
 end
 
 function PromptBox:ensure_cursor_visible(input_width)
+    local previous_input_width = self.last_input_width
+    self.last_input_width = input_width
+
     if input_width <= 0 then
         self.scroll = self.cursor
         return 0
@@ -429,6 +433,19 @@ function PromptBox:ensure_cursor_visible(input_width)
     while self.scroll < self.cursor and cursor_width >= input_width do
         self.scroll = self.scroll + 1
         cursor_width = cursor_width - characters[self.scroll].width
+    end
+
+    if previous_input_width and input_width > previous_input_width then
+        while self.scroll > 0 do
+            local previous_width = characters[self.scroll].width
+
+            if cursor_width + previous_width >= input_width then
+                break
+            end
+
+            self.scroll = self.scroll - 1
+            cursor_width = cursor_width + previous_width
+        end
     end
 
     self.scroll = math.max(0, math.min(self.scroll, Text.length(self.value)))
