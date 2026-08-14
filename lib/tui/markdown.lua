@@ -64,6 +64,8 @@ function Markdown.inline(value)
                 role = "emphasis"
             elseif marker_length == 2 then
                 role = "strong"
+            elseif marker_length == 3 then
+                role = "strong_emphasis"
             end
         end
 

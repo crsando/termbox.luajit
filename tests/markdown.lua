@@ -39,10 +39,17 @@ assert(#mismatched_emphasis == 1)
 assert(mismatched_emphasis[1].text == "*italic**")
 assert(mismatched_emphasis[1].role == "normal")
 
-local unsupported_triple = Markdown.inline("***both***")
-assert(#unsupported_triple == 1)
-assert(unsupported_triple[1].text == "***both***")
-assert(unsupported_triple[1].role == "normal")
+local strong_emphasis = Markdown.inline("***both*** ___also both___")
+assert(#strong_emphasis == 3)
+assert(strong_emphasis[1].text == "both")
+assert(strong_emphasis[1].role == "strong_emphasis")
+assert(strong_emphasis[3].text == "also both")
+assert(strong_emphasis[3].role == "strong_emphasis")
+
+local mismatched_strong_emphasis = Markdown.inline("***both**")
+assert(#mismatched_strong_emphasis == 1)
+assert(mismatched_strong_emphasis[1].text == "***both**")
+assert(mismatched_strong_emphasis[1].role == "normal")
 
 local recovered = Markdown.inline("**bad* *ok*")
 assert(#recovered == 2)
@@ -105,6 +112,21 @@ assert(themed_canvas.cells[1][1].italic)
 assert(not themed_canvas.cells[1][1].bold)
 assert(themed_canvas.cells[1][1].fg == Color.rgb(105, 219, 124))
 assert(themed_canvas.cells[1][1].bg == Color.rgb(1, 2, 3))
+
+local combined = Widgets.TextBox.new({
+    format = "markdown",
+    text = "***both***",
+    markdown_theme = {
+        strong_emphasis = { fg = Color.rgb(1, 2, 3) },
+    },
+})
+local combined_canvas = Canvas.new(20, 3)
+combined:view(combined_canvas, { x = 0, y = 0, width = 20, height = 3 })
+
+assert(combined_canvas.cells[1][1].ch == "b")
+assert(combined_canvas.cells[1][1].bold)
+assert(combined_canvas.cells[1][1].italic)
+assert(combined_canvas.cells[1][1].fg == Color.rgb(1, 2, 3))
 
 local original_layout = box.layout_lines
 box:update({ type = "set_text", text = "# Changed" })

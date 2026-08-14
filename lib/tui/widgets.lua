@@ -25,6 +25,11 @@ local default_markdown_theme = {
         fg = Color.rgb(255, 214, 102),
         bold = true,
     },
+    strong_emphasis = {
+        fg = Color.rgb(255, 214, 102),
+        bold = true,
+        italic = true,
+    },
     heading = {
         [1] = { fg = Color.rgb(255, 214, 102), bold = true },
         [2] = { fg = Color.rgb(116, 192, 252), bold = true },
@@ -85,6 +90,13 @@ local function markdown_theme(override)
         strong = merge_style(
             default_markdown_theme.strong,
             check_style(override.strong, "markdown_theme.strong")
+        ),
+        strong_emphasis = merge_style(
+            default_markdown_theme.strong_emphasis,
+            check_style(
+                override.strong_emphasis,
+                "markdown_theme.strong_emphasis"
+            )
         ),
         heading = {},
     }

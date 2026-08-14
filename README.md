@@ -137,12 +137,12 @@ local box = Widgets.TextBox.new({
 })
 ```
 
-支持的语法只有 `*emphasis*`、`_emphasis_`、`**strong**`、`__strong__` 和行首
-`#` 至 `####` 标题。未闭合或不匹配的标记按普通文本显示；代码、列表、链接、表格
-和图片暂不解析。
+支持的语法只有 `*emphasis*`、`_emphasis_`、`**strong**`、`__strong__`、
+`***strong emphasis***`、`___strong emphasis___` 和行首 `#` 至 `####` 标题。
+未闭合或不匹配的标记按普通文本显示；代码、列表、链接、表格和图片暂不解析。
 
 `markdown_theme` 可以局部覆盖默认主题，不需要复制完整配置。普通样式先作为基础，
-再叠加 emphasis/strong 属性，标题样式最后决定标题颜色：
+再叠加 emphasis/strong/strong_emphasis 属性，标题样式最后决定标题颜色：
 
 ```lua
 local box = Widgets.TextBox.new({
@@ -423,5 +423,5 @@ binding 和 Terminal 提供 Up/Down 键映射，向 Widget 发送
 - PromptBox 采用单行水平滚动：保留完整输入内容，只显示光标附近的可视窗口。
 - UTF-8 编辑以 codepoint 为单位，尚未支持完整 grapheme cluster；组合音标、ZWJ
   emoji 和部分变体选择符可能无法作为一个整体移动、删除或计算宽度。
-- Markdown 目前只支持强调、斜体、粗体和一至四级标题；不支持代码、列表、链接、
+- Markdown 目前只支持强调、斜体、粗体、粗斜体和一至四级标题；不支持代码、列表、链接、
   表格、图片或完整 CommonMark 语义。
