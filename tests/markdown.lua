@@ -29,6 +29,28 @@ local unclosed = Markdown.inline("keep *this marker")
 assert(unclosed[1].text == "keep *this marker")
 assert(unclosed[1].role == "normal")
 
+local mismatched_strong = Markdown.inline("**bold*")
+assert(#mismatched_strong == 1)
+assert(mismatched_strong[1].text == "**bold*")
+assert(mismatched_strong[1].role == "normal")
+
+local mismatched_emphasis = Markdown.inline("*italic**")
+assert(#mismatched_emphasis == 1)
+assert(mismatched_emphasis[1].text == "*italic**")
+assert(mismatched_emphasis[1].role == "normal")
+
+local unsupported_triple = Markdown.inline("***both***")
+assert(#unsupported_triple == 1)
+assert(unsupported_triple[1].text == "***both***")
+assert(unsupported_triple[1].role == "normal")
+
+local recovered = Markdown.inline("**bad* *ok*")
+assert(#recovered == 2)
+assert(recovered[1].text == "**bad* ")
+assert(recovered[1].role == "normal")
+assert(recovered[2].text == "ok")
+assert(recovered[2].role == "emphasis")
+
 local wrapped = Markdown.wrap_line(
     Markdown.parse_line("# A *long heading*"),
     8
@@ -37,6 +59,14 @@ assert(#wrapped == 2)
 assert(wrapped[1].heading == 1)
 assert(wrapped[1].segments[1].text == "A ")
 assert(wrapped[2].segments[1].role == "emphasis")
+
+local unicode_wrapped = Markdown.wrap_line(
+    Markdown.parse_line("A中B"),
+    3
+)
+assert(#unicode_wrapped == 2)
+assert(unicode_wrapped[1].segments[1].text == "A中")
+assert(unicode_wrapped[2].segments[1].text == "B")
 
 local box = Widgets.TextBox.new({
     format = "markdown",
@@ -56,5 +86,43 @@ assert(canvas.cells[2][7].italic)
 assert(canvas.cells[2][7].fg == Color.rgb(116, 192, 252))
 assert(canvas.cells[2][18].ch == "b")
 assert(canvas.cells[2][18].bold)
+
+local themed = Widgets.TextBox.new({
+    format = "markdown",
+    text = "### *Title*",
+    markdown_theme = {
+        normal = { bg = Color.rgb(1, 2, 3) },
+        heading = {
+            [3] = { bold = false },
+        },
+    },
+})
+local themed_canvas = Canvas.new(20, 3)
+themed:view(themed_canvas, { x = 0, y = 0, width = 20, height = 3 })
+
+assert(themed_canvas.cells[1][1].ch == "T")
+assert(themed_canvas.cells[1][1].italic)
+assert(not themed_canvas.cells[1][1].bold)
+assert(themed_canvas.cells[1][1].fg == Color.rgb(105, 219, 124))
+assert(themed_canvas.cells[1][1].bg == Color.rgb(1, 2, 3))
+
+local original_layout = box.layout_lines
+box:update({ type = "set_text", text = "# Changed" })
+assert(box.layout_lines == nil)
+box:view(Canvas.new(12, 3), { x = 0, y = 0, width = 12, height = 3 })
+assert(box.layout_width == 10)
+assert(box.layout_lines ~= original_layout)
+
+local wide_layout = box.layout_lines
+box:view(Canvas.new(8, 4), { x = 0, y = 0, width = 8, height = 4 })
+assert(box.layout_width == 6)
+assert(box.layout_lines ~= wide_layout)
+
+assert(not pcall(Widgets.TextBox.new, { format = "md" }))
+assert(not pcall(Widgets.TextBox.new, { format = false }))
+assert(not pcall(Widgets.TextBox.new, {
+    format = "markdown",
+    markdown_theme = { heading = "invalid" },
+}))
 
 print("markdown: ok")

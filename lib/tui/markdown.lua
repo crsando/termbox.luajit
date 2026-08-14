@@ -19,24 +19,24 @@ local function append_segment(segments, text, role)
     end
 end
 
-local function same_marker(chars, index, marker, length)
-    for offset = 0, length - 1 do
-        if not chars[index + offset] or chars[index + offset].text ~= marker then
-            return false
-        end
+local function marker_run(chars, index, marker)
+    local length = 0
+
+    while chars[index + length] and chars[index + length].text == marker do
+        length = length + 1
     end
 
-    return true
+    return length
 end
 
-local function closing_marker(chars, start, marker, length)
-    for index = start, #chars - length + 1 do
-        if same_marker(chars, index, marker, length) then
-            return index
+local function next_marker_run(chars, start, marker)
+    for index = start, #chars do
+        if chars[index].text == marker then
+            return index, marker_run(chars, index, marker)
         end
     end
 
-    return nil
+    return nil, nil
 end
 
 function Markdown.inline(value)
@@ -57,26 +57,27 @@ function Markdown.inline(value)
         local marker_length
         local role
 
-        if (marker == "*" or marker == "_") and same_marker(chars, index, marker, 3) then
-            marker_length = 3
-            role = "strong_emphasis"
-        elseif (marker == "*" or marker == "_") and same_marker(chars, index, marker, 2) then
-            marker_length = 2
-            role = "strong"
-        elseif marker == "*" or marker == "_" then
-            marker_length = 1
-            role = "emphasis"
+        if marker == "*" or marker == "_" then
+            marker_length = marker_run(chars, index, marker)
+
+            if marker_length == 1 then
+                role = "emphasis"
+            elseif marker_length == 2 then
+                role = "strong"
+            end
         end
 
-        if marker_length then
-            local close = closing_marker(
+        if role then
+            local close, close_length = next_marker_run(
                 chars,
                 index + marker_length,
-                marker,
-                marker_length
+                marker
             )
 
-            if close and close > index + marker_length then
+            if close
+                and close_length == marker_length
+                and close > index + marker_length
+            then
                 flush_plain()
 
                 local content = {}
@@ -87,10 +88,25 @@ function Markdown.inline(value)
 
                 append_segment(segments, table.concat(content), role)
                 index = close + marker_length
+            elseif close then
+                for plain_index = index, close + close_length - 1 do
+                    plain[#plain + 1] = chars[plain_index].text
+                end
+
+                index = close + close_length
             else
-                plain[#plain + 1] = marker
-                index = index + 1
+                for _ = 1, marker_length do
+                    plain[#plain + 1] = marker
+                end
+
+                index = index + marker_length
             end
+        elseif marker_length then
+            for _ = 1, marker_length do
+                plain[#plain + 1] = marker
+            end
+
+            index = index + marker_length
         else
             plain[#plain + 1] = marker
             index = index + 1

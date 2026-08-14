@@ -1,4 +1,4 @@
-.PHONY: all check-deps test clean run install
+.PHONY: all check-deps test check clean run install
 
 LUAJIT ?= luajit
 CC ?= cc
@@ -20,6 +20,7 @@ LUAJIT_LIBS = -L$(LUAJIT_PREFIX)/lib -lluajit-5.1
 endif
 
 CFLAGS ?= -O2 -fPIC -std=c99
+STRICT_CFLAGS ?= $(CFLAGS) -Wall -Wextra -Wpedantic -Werror
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
@@ -34,13 +35,21 @@ ltermbox.so: src/termbox.c vendor/termbox.h
 	$(CC) $(CFLAGS) $(LUAJIT_CFLAGS) $(LDFLAGS) -Ivendor -o $@ $< $(LUAJIT_LIBS)
 
 check-deps:
-	$(LUAJIT) -e 'assert(require("lua-utf8"))'
+	$(LUAJIT) -e 'assert(require("lua-utf8")); assert(require("luv"))'
 
 test: ltermbox.so check-deps
+	$(LUAJIT) tests/dependencies.lua
 	$(LUAJIT) tests/colors.lua
 	$(LUAJIT) tests/text.lua
 	$(LUAJIT) tests/markdown.lua
+	$(LUAJIT) tests/layout.lua
+	$(LUAJIT) tests/terminal.lua
+	$(LUAJIT) tests/runtime.lua
 	$(LUAJIT) tests/smoke.lua
+
+check:
+	$(MAKE) -B CFLAGS="$(STRICT_CFLAGS)" ltermbox.so
+	$(MAKE) test
 
 run: ltermbox.so check-deps
 	$(LUAJIT) examples/prompt.lua

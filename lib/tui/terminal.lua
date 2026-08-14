@@ -4,6 +4,23 @@ local Text = require("tui.text")
 local Terminal = {}
 Terminal.__index = Terminal
 
+local function native_error(operation, result)
+    return string.format(
+        "termbox %s failed (%d): %s",
+        operation,
+        result,
+        native.error_string(result)
+    )
+end
+
+local function check_result(operation, result, level)
+    if result ~= 0 then
+        error(native_error(operation, result), level or 3)
+    end
+
+    return result
+end
+
 local keys = {
     [native.KEY_ARROW_UP] = "up",
     [native.KEY_ARROW_DOWN] = "down",
@@ -26,26 +43,43 @@ function Terminal.new(opts)
         black_attribute = native.ATTR_HI_BLACK,
     })
 
-    assert(native.init() == 0, "termbox init failed")
+    check_result("init", native.init(), 2)
     local mode_result = native.set_output_mode(colors.mode)
 
     if mode_result ~= 0 then
-        native.shutdown()
-        error("termbox output mode failed: " .. colors.mode)
+        local message = native_error("set output mode " .. colors.mode, mode_result)
+        local shutdown_result = native.shutdown()
+
+        if shutdown_result ~= 0 then
+            message = message
+                .. "; "
+                .. native_error("shutdown", shutdown_result)
+        end
+
+        error(message, 2)
     end
 
     local mouse_enabled = opts.mouse == true
     local mouse_result = native.set_mouse_enabled(mouse_enabled)
 
     if mouse_result ~= 0 then
-        native.shutdown()
-        error("termbox mouse mode failed")
+        local message = native_error("set mouse mode", mouse_result)
+        local shutdown_result = native.shutdown()
+
+        if shutdown_result ~= 0 then
+            message = message
+                .. "; "
+                .. native_error("shutdown", shutdown_result)
+        end
+
+        error(message, 2)
     end
 
     return setmetatable({
         colors = colors,
         color_mode = colors.mode,
         mouse_enabled = mouse_enabled,
+        closed = false,
     }, Terminal)
 end
 
@@ -126,37 +160,50 @@ function Terminal:poll(timeout)
 end
 
 function Terminal:present(canvas)
-    native.clear()
+    check_result("clear", native.clear(), 2)
 
     for y = 0, canvas.height - 1 do
         for x = 0, canvas.width - 1 do
             local cell = canvas.cells[y][x]
 
             if not cell.continuation then
-                native.set_cell(
-                    x,
-                    y,
-                    cell.ch,
-                    self.colors:encode(cell.fg),
-                    self.colors:encode(cell.bg),
-                    cell.bold,
-                    cell.italic
+                check_result(
+                    "set cell",
+                    native.set_cell(
+                        x,
+                        y,
+                        cell.ch,
+                        self.colors:encode(cell.fg),
+                        self.colors:encode(cell.bg),
+                        cell.bold,
+                        cell.italic
+                    ),
+                    2
                 )
             end
         end
     end
 
     if canvas.cursor then
-        native.set_cursor(canvas.cursor.x, canvas.cursor.y)
+        check_result(
+            "set cursor",
+            native.set_cursor(canvas.cursor.x, canvas.cursor.y),
+            2
+        )
     else
-        native.hide_cursor()
+        check_result("hide cursor", native.hide_cursor(), 2)
     end
 
-    native.present()
+    check_result("present", native.present(), 2)
 end
 
 function Terminal:close()
-    native.shutdown()
+    if self.closed then
+        return
+    end
+
+    self.closed = true
+    check_result("shutdown", native.shutdown(), 2)
 end
 
 return Terminal

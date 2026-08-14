@@ -3,6 +3,7 @@
 #include "termbox.h"
 #include <lua.h>
 #include <lauxlib.h>
+#include <errno.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -12,8 +13,19 @@ static int l_width(lua_State *L) { (void)L; lua_pushinteger(L, tb_width()); retu
 static int l_height(lua_State *L) { (void)L; lua_pushinteger(L, tb_height()); return 1; }
 static int l_clear(lua_State *L) { (void)L; lua_pushinteger(L, tb_clear()); return 1; }
 static int l_present(lua_State *L) { (void)L; lua_pushinteger(L, tb_present()); return 1; }
-static int l_set_cursor(lua_State *L) { tb_set_cursor((int)luaL_checkinteger(L, 1), (int)luaL_checkinteger(L, 2)); return 0; }
-static int l_hide_cursor(lua_State *L) { (void)L; tb_set_cursor(-1, -1); return 0; }
+static int l_set_cursor(lua_State *L) {
+    int x = (int)luaL_checkinteger(L, 1);
+    int y = (int)luaL_checkinteger(L, 2);
+
+    lua_pushinteger(L, tb_set_cursor(x, y));
+    return 1;
+}
+
+static int l_hide_cursor(lua_State *L) {
+    (void)L;
+    lua_pushinteger(L, tb_hide_cursor());
+    return 1;
+}
 
 static uintattr_t check_attr(lua_State *L, int index) {
     lua_Number value = luaL_checknumber(L, index);
@@ -94,8 +106,15 @@ static int l_set_cell(lua_State *L) {
         return luaL_argerror(L, 3, "cell must contain exactly one valid UTF-8 codepoint");
     }
 
-    tb_set_cell(x, y, ch, fg | attrs, bg);
-    return 0;
+    lua_pushinteger(L, tb_set_cell(x, y, ch, fg | attrs, bg));
+    return 1;
+}
+
+static int l_error_string(lua_State *L) {
+    int code = (int)luaL_checkinteger(L, 1);
+
+    lua_pushstring(L, tb_strerror(code));
+    return 1;
 }
 
 static int l_wcwidth(lua_State *L) {
@@ -187,7 +206,24 @@ static int l_attr_width(lua_State *L) {
 static int l_poll(lua_State *L) {
     struct tb_event event;
     int rv = tb_peek_event(&event, (int)luaL_optinteger(L, 1, 0));
-    if (rv < 0) { lua_pushnil(L); return 1; }
+
+    if (rv == TB_ERR_NO_EVENT
+        || rv == TB_ERR_NEED_MORE
+        || (rv == TB_ERR_POLL && tb_last_errno() == EINTR))
+    {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    if (rv < 0) {
+        return luaL_error(
+            L,
+            "termbox poll failed (%d): %s",
+            rv,
+            tb_strerror(rv)
+        );
+    }
+
     lua_newtable(L);
     if (event.type == TB_EVENT_RESIZE) {
         lua_pushliteral(L, "resize"); lua_setfield(L, -2, "type");
@@ -215,6 +251,7 @@ static const luaL_Reg funcs[] = {
     {"clear", l_clear}, {"present", l_present}, {"set_cursor", l_set_cursor}, {"hide_cursor", l_hide_cursor},
     {"set_cell", l_set_cell}, {"set_output_mode", l_set_output_mode}, {"output_mode", l_output_mode},
     {"has_truecolor", l_has_truecolor}, {"attr_width", l_attr_width}, {"wcwidth", l_wcwidth},
+    {"error_string", l_error_string},
     {"set_mouse_enabled", l_set_mouse_enabled}, {"poll", l_poll}, {NULL, NULL}
 };
 

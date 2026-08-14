@@ -38,7 +38,11 @@ termbox C event -> Lua binding -> normalized message -> model:update(msg)
 cd ~/Develop/termbox.luajit
 make
 make test
+make check
 ```
+
+`make test` 运行全部功能和回归测试。`make check` 先使用 GCC/Clang 共同支持的
+`-Wall -Wextra -Wpedantic -Werror` 强制重编译 C binding，再执行同一套测试。
 
 `make` 会编译 LuaJIT 原生模块：
 
@@ -102,6 +106,7 @@ termbox.output_mode()
 termbox.has_truecolor()
 termbox.attr_width()
 termbox.wcwidth(codepoint)
+termbox.error_string(error_code)
 termbox.set_mouse_enabled(true)
 termbox.width()
 termbox.height()
@@ -116,6 +121,9 @@ termbox.shutdown()
 
 Binding 接收的是已经按当前输出模式编码的数值颜色属性。应用和 Widget
 应通过 `Canvas` 使用 RGB 颜色，由 `Terminal` 统一完成编码和降级。
+状态变更和绘制函数返回 termbox 状态码；`Terminal` 会检查这些状态码并将错误码及
+`termbox.error_string()` 的结果一起报告。`poll()` 仅在无事件、输入尚未完整或被
+信号安全中断时返回 `nil`，其他原生错误会直接抛出。
 
 `Canvas` cell style 支持 `bold` 和 `italic`；后者在终端能力允许时使用 termbox
 的 `TB_ITALIC` 属性，同时由 Markdown 主题提供颜色回退。
@@ -132,6 +140,30 @@ local box = Widgets.TextBox.new({
 支持的语法只有 `*emphasis*`、`_emphasis_`、`**strong**`、`__strong__` 和行首
 `#` 至 `####` 标题。未闭合或不匹配的标记按普通文本显示；代码、列表、链接、表格
 和图片暂不解析。
+
+`markdown_theme` 可以局部覆盖默认主题，不需要复制完整配置。普通样式先作为基础，
+再叠加 emphasis/strong 属性，标题样式最后决定标题颜色：
+
+```lua
+local box = Widgets.TextBox.new({
+    format = "markdown",
+    markdown_theme = {
+        normal = { bg = Color.rgb(16, 16, 16) },
+        heading = {
+            [1] = { fg = Color.bright_cyan },
+        },
+    },
+})
+```
+
+`format` 只接受 `plain` 和 `markdown`；非法值和非法主题结构会立即报错。
+
+## 布局
+
+`Layout.fixed(id, size)` 保留声明尺寸；`Layout.flex(id, weight)` 按权重分配扣除 fixed
+后的剩余空间，整数舍入余量只分给最后一个 flex item。所有 item 都是 fixed 且总尺寸
+不足时，尾部空间保持未分配；总尺寸超过容器时按声明顺序裁剪，任何子区域都不会越过
+容器末端。fixed size 必须是非负整数，flex weight 必须是有限正数。
 
 ## 颜色
 
@@ -234,14 +266,21 @@ lib/tui/init.lua        MUV runtime
 lib/tui/canvas.lua      cell canvas
 lib/tui/color.lua       RGB color model
 lib/tui/color_encoder.lua terminal color quantization
+lib/tui/layout.lua      fixed/flex layout
+lib/tui/markdown.lua    controlled Markdown parser
 lib/tui/text.lua        UTF-8 operations and terminal display width
 lib/tui/widgets.lua     TextBox / PromptBox
 lib/tui/terminal.lua    binding adapter
 examples/prompt.lua     demo model
 tests/colors.lua        color model and quantization tests
+tests/dependencies.lua  dependency diagnostic tests
+tests/layout.lua        layout allocation and validation tests
+tests/runtime.lua       runtime lifecycle and cleanup tests
+tests/terminal.lua      terminal adapter error handling tests
 tests/text.lua          UTF-8, event and canvas tests
 tests/markdown.lua      Markdown parser and styled TextBox tests
 tests/smoke.lua         widget smoke test
+.github/workflows/ci.yml macOS/Linux build and test matrix
 ```
 
 ## UTF-8、历史和滚动设计
@@ -256,7 +295,8 @@ codepoint 组成的 grapheme cluster，例如组合音标、ZWJ emoji 和部分�
 
 UTF-8 字符串处理采用 [starwing/luautf8](https://github.com/starwing/luautf8)。
 该库作为外部运行时依赖，由用户通过 LuaRocks 单独编译安装；项目不复制其源码，
-不生成第二份 `lua-utf8.so`，Makefile 在运行 demo 和测试前检查模块是否能够加载。
+不生成第二份 `lua-utf8.so`，Makefile 在运行 demo 和测试前检查 `lua-utf8` 和 `luv`
+是否能够加载。
 
 实现时必须区分三种坐标，避免继续用 Lua 字符串字节下标表示终端位置：
 
@@ -361,11 +401,21 @@ binding 和 Terminal 提供 Up/Down 键映射，向 Widget 发送
 
 ## 编码规范
 
-- 所有项目代码统一使用 4 个空格缩进，不使用 Tab；Makefile recipe 行是 GNU Make 的语法例外，必须使用 Tab。
+- Lua/C 项目代码统一使用 4 个空格缩进，不使用 Tab；Makefile recipe 行必须使用 Tab，
+  YAML 配置遵循通用的 2 空格缩进。
 - 特别简单、语义清晰的语句可以写在一行，例如简单的 `return` 或短函数。
 - `if`、`function`、`for`、`while` 等结构默认展开换行，保持代码易读；只有非常简单的单分支逻辑才允许紧凑书写。
 - 复杂表达式、函数参数和 table 字段按需要分行，保证每行职责清晰。
 - 第三方 `vendor/termbox.h` 保持上游格式，不参与本项目格式化。
+
+## 质量保证
+
+- `make test` 覆盖依赖诊断、颜色、UTF-8、Markdown、Layout、Terminal、Runtime 和
+  Widget 行为。
+- `make check` 在测试前启用 GCC/Clang 严格警告，macOS 和 Linux 使用同一入口。
+- GitHub Actions 在 `macos-latest` 和 `ubuntu-latest` 上执行 `make check`。
+- 真实终端发布检查仍需分别在 macOS 与 Linux/WSL 验证键盘、鼠标、resize、颜色和
+  终端异常后的恢复行为。
 
 ## 当前限制
 

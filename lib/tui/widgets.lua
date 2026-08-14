@@ -25,11 +25,6 @@ local default_markdown_theme = {
         fg = Color.rgb(255, 214, 102),
         bold = true,
     },
-    strong_emphasis = {
-        fg = Color.rgb(255, 214, 102),
-        bold = true,
-        italic = true,
-    },
     heading = {
         [1] = { fg = Color.rgb(255, 214, 102), bold = true },
         [2] = { fg = Color.rgb(116, 192, 252), bold = true },
@@ -58,9 +53,63 @@ local function merge_style(base, overlay)
     return result
 end
 
+local function check_style(style, name)
+    if style ~= nil and type(style) ~= "table" then
+        error(name .. " must be a table", 4)
+    end
+
+    return style
+end
+
+local function markdown_theme(override)
+    if override ~= nil and type(override) ~= "table" then
+        error("markdown_theme must be a table", 3)
+    end
+
+    override = override or {}
+    local override_heading = override.heading
+
+    if override_heading ~= nil and type(override_heading) ~= "table" then
+        error("markdown_theme.heading must be a table", 3)
+    end
+
+    local theme = {
+        normal = merge_style(
+            default_markdown_theme.normal,
+            check_style(override.normal, "markdown_theme.normal")
+        ),
+        emphasis = merge_style(
+            default_markdown_theme.emphasis,
+            check_style(override.emphasis, "markdown_theme.emphasis")
+        ),
+        strong = merge_style(
+            default_markdown_theme.strong,
+            check_style(override.strong, "markdown_theme.strong")
+        ),
+        heading = {},
+    }
+
+    for level = 1, 4 do
+        theme.heading[level] = merge_style(
+            default_markdown_theme.heading[level],
+            check_style(
+                override_heading and override_heading[level],
+                "markdown_theme.heading[" .. level .. "]"
+            )
+        )
+    end
+
+    return theme
+end
+
 function TextBox.new(opts)
     opts = opts or {}
     local follow_tail = opts.follow_tail == true
+    local format = opts.format == nil and "plain" or opts.format
+
+    if format ~= "plain" and format ~= "markdown" then
+        error("TextBox format must be plain or markdown", 2)
+    end
 
     return setmetatable({
         text = opts.text or "",
@@ -69,8 +118,8 @@ function TextBox.new(opts)
         max_scroll = 0,
         follow_tail = follow_tail,
         at_tail = follow_tail,
-        format = opts.format or "plain",
-        markdown_theme = opts.markdown_theme or default_markdown_theme,
+        format = format,
+        markdown_theme = markdown_theme(opts.markdown_theme),
         parsed_lines = nil,
         layout_width = nil,
         layout_lines = nil,
@@ -224,16 +273,14 @@ end
 
 function TextBox:markdown_style(heading, role)
     local theme = self.markdown_theme
-    local style = theme.normal or {}
+    local style = theme.normal
 
-    if heading then
-        style = theme.heading[heading] or style
-    else
-        style = theme[role] or style
+    if role ~= "normal" then
+        style = merge_style(style, theme[role])
     end
 
-    if heading and role ~= "normal" then
-        style = merge_style(style, theme[role])
+    if heading then
+        style = merge_style(style, theme.heading[heading])
     end
 
     return style

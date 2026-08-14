@@ -32,6 +32,13 @@ assert(not valid_empty_cell)
 assert(not valid_scalar)
 assert(native.wcwidth(0x4e2d) == 2)
 assert(native.wcwidth(0x2502) == 1)
+assert(native.error_string(-8) == "Termbox not initialized")
+assert(native.set_cell(0, 0, "x", 0, 0, false, false) == -8)
+assert(native.hide_cursor() == -8)
+
+local poll_ok, poll_error = pcall(native.poll, 0)
+assert(not poll_ok)
+assert(tostring(poll_error):find("Termbox not initialized", 1, true))
 
 local unicode_event = Terminal.normalize_event({
     type = "key",
