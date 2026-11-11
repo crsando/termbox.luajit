@@ -15,6 +15,16 @@ function Runtime.new(terminal, model, opts)
     opts = opts or {}
     local signals = opts.signals
 
+    local input = opts.input == nil and "auto" or opts.input
+
+    if input ~= "auto"
+        and input ~= "poll"
+        and input ~= "thread"
+        and input ~= "timer"
+    then
+        error("input must be auto, poll, thread, or timer", 2)
+    end
+
     if signals == nil then
         signals = default_signals
     elseif signals == false then
@@ -27,6 +37,12 @@ function Runtime.new(terminal, model, opts)
         terminal = terminal,
         model = model,
         signals = signals,
+        input_mode = input,
+        active_input = nil,
+        input_handles = nil,
+        render_timer = nil,
+        render_callback = nil,
+        draining = false,
         signal_handles = {},
         stop_signal = nil,
         dirty = true,
@@ -44,6 +60,227 @@ function Runtime:dispatch(msg)
     for _, command in ipairs(commands) do
         command(self)
     end
+
+    -- In poll mode nothing wakes up periodically, so a dispatch coming from
+    -- an application callback (timer, socket, ...) schedules its own frame.
+    -- Dispatches from terminal input are rendered at the end of drain().
+    if self.render_timer and not self.draining and self.running then
+        self.render_timer:start(0, 0, self.render_callback)
+    end
+end
+
+-- Wrap a libuv callback: an error stops the runtime and is re-raised by run().
+function Runtime:protect(callback)
+    return function(...)
+        local args = { ... }
+        local count = select("#", ...)
+        local ok, callback_error = xpcall(function()
+            if self.running then
+                callback(unpack(args, 1, count))
+            end
+        end, traceback)
+
+        if not ok then
+            self.callback_error = callback_error
+            local quit_ok, quit_error = xpcall(function()
+                self:quit()
+            end, traceback)
+
+            if not quit_ok then
+                self.callback_error = self.callback_error
+                    .. "\nwhile stopping runtime:\n"
+                    .. quit_error
+                uv.stop()
+            end
+        end
+    end
+end
+
+-- Deliver every queued terminal event, then draw one frame.
+function Runtime:drain()
+    self.draining = true
+
+    while self.running do
+        local event = self.terminal:poll(0)
+
+        if not event then
+            break
+        end
+
+        self:dispatch(event)
+    end
+
+    self.draining = false
+
+    if self.running then
+        self:render()
+    end
+end
+
+local function close_handle(handle)
+    if not handle:is_closing() then
+        handle:stop()
+        handle:close()
+    end
+end
+
+-- Watch the terminal's tty and resize descriptors so the process sleeps
+-- until input arrives. Falls back to a 16 ms polling timer when the terminal
+-- exposes no descriptors or libuv cannot watch them.
+function Runtime:start_poll_input()
+    if self.input_mode == "timer"
+        or self.input_mode == "thread"
+        or type(self.terminal.fds) ~= "function"
+    then
+        return false
+    end
+
+    local fds = { self.terminal:fds() }
+
+    if #fds == 0 then
+        return false
+    end
+
+    local on_readable = self:protect(function(poll_error)
+        if poll_error then
+            error("terminal input poll failed: " .. tostring(poll_error), 0)
+        end
+
+        self:drain()
+    end)
+    local handles = {}
+
+    for _, fd in ipairs(fds) do
+        local created, handle = pcall(uv.new_poll, fd)
+        handle = created and handle or nil
+        local started = handle ~= nil and pcall(function()
+            assert(handle:start("r", on_readable))
+        end)
+
+        if not started then
+            if handle then
+                close_handle(handle)
+            end
+
+            for _, opened in ipairs(handles) do
+                close_handle(opened)
+            end
+
+            if self.input_mode == "poll" then
+                error("cannot watch terminal descriptor " .. tostring(fd), 0)
+            end
+
+            return false
+        end
+
+        handles[#handles + 1] = handle
+    end
+
+    self.input_handles = handles
+    self.render_timer = assert(uv.new_timer(), "failed to create render timer")
+    self.render_callback = self:protect(function()
+        self:render()
+    end)
+    -- Input that arrived before the handles were started.
+    self.render_timer:start(0, 0, self:protect(function()
+        self:drain()
+    end))
+    return true
+end
+
+-- Runs in a libuv worker thread with its own Lua state: no upvalues, only
+-- primitive arguments and results.
+local function wait_work(cpath, module, timeout, ...)
+    package.cpath = cpath
+    local fds = { ... }
+    return pcall(function()
+        return require(module).wait_readable(timeout, unpack(fds))
+    end)
+end
+
+-- macOS fallback: block in select(2) on a worker thread, drain on the main
+-- thread, then wait again. A byte on the wake pipe releases the worker when
+-- the runtime quits.
+function Runtime:start_thread_input()
+    if self.input_mode == "timer"
+        or self.input_mode == "poll"
+        or type(self.terminal.fds) ~= "function"
+        or type(self.terminal.wait_module) ~= "function"
+    then
+        return false
+    end
+
+    local fds = { self.terminal:fds() }
+
+    if #fds == 0 then
+        return false
+    end
+
+    local module = self.terminal:wait_module()
+    local wake = assert(uv.pipe({ nonblock = true }, { nonblock = true }))
+    local wait_fds = { wake.read }
+
+    for _, fd in ipairs(fds) do
+        wait_fds[#wait_fds + 1] = fd
+    end
+
+    local work
+    local on_ready = self:protect(function(ok, first, message)
+        if not ok then
+            error("terminal input wait failed: " .. tostring(first), 0)
+        end
+
+        if first == nil then
+            error("terminal input wait failed: " .. tostring(message), 0)
+        end
+
+        if first ~= false then
+            self:drain()
+        end
+    end)
+
+    work = uv.new_work(wait_work, function(...)
+        if self.running then
+            on_ready(...)
+        end
+
+        if self.running then
+            work:queue(package.cpath, module, -1, unpack(wait_fds))
+        else
+            uv.fs_close(wake.read)
+            uv.fs_close(wake.write)
+        end
+    end)
+
+    self.wake_pipe = wake
+    self.render_timer = assert(uv.new_timer(), "failed to create render timer")
+    self.render_callback = self:protect(function()
+        self:render()
+    end)
+    work:queue(package.cpath, module, -1, unpack(wait_fds))
+    return true
+end
+
+function Runtime:start_input()
+    if self:start_poll_input() then
+        self.active_input = "poll"
+        return
+    end
+
+    if self:start_thread_input() then
+        self.active_input = "thread"
+        return
+    end
+
+    if self.input_mode == "thread" then
+        error("thread input requires a terminal with fds() and wait_module()", 0)
+    end
+
+    self.active_input = "timer"
+    self.timer = assert(uv.new_timer(), "failed to create runtime timer")
+    self.timer:start(0, 16, self:protect(function()
+        self:drain()
+    end))
 end
 
 function Runtime:render()
@@ -99,42 +336,7 @@ function Runtime:run()
             end)
         end
 
-        self.timer = assert(uv.new_timer(), "failed to create runtime timer")
-        self.timer:start(0, 16, function()
-            local callback_ok, callback_error = xpcall(function()
-                if not self.running then
-                    return
-                end
-
-                while self.running do
-                    local event = self.terminal:poll(0)
-
-                    if not event then
-                        break
-                    end
-
-                    self:dispatch(event)
-                end
-
-                if self.running then
-                    self:render()
-                end
-            end, traceback)
-
-            if not callback_ok then
-                self.callback_error = callback_error
-                local quit_ok, quit_error = xpcall(function()
-                    self:quit()
-                end, traceback)
-
-                if not quit_ok then
-                    self.callback_error = self.callback_error
-                        .. "\nwhile stopping runtime:\n"
-                        .. quit_error
-                    uv.stop()
-                end
-            end
-        end)
+        self:start_input()
 
         self.loop_running = true
         local loop_ok, loop_error = pcall(uv.run)
@@ -178,6 +380,23 @@ function Runtime:quit()
         self.timer = nil
         timer:stop()
         timer:close()
+    end
+
+    for _, handle in ipairs(self.input_handles or {}) do
+        close_handle(handle)
+    end
+
+    self.input_handles = nil
+
+    if self.render_timer then
+        close_handle(self.render_timer)
+        self.render_timer = nil
+    end
+
+    if self.wake_pipe then
+        -- The worker's completion callback closes the pipe.
+        uv.fs_write(self.wake_pipe.write, "x", -1)
+        self.wake_pipe = nil
     end
 
     local handles = self.signal_handles

@@ -135,6 +135,87 @@ static int l_wcwidth(lua_State *L) {
     return 1;
 }
 
+static int l_get_fds(lua_State *L) {
+    int ttyfd = -1;
+    int resizefd = -1;
+    int rv = tb_get_fds(&ttyfd, &resizefd);
+
+    if (rv != TB_OK) {
+        lua_pushnil(L);
+        lua_pushinteger(L, rv);
+        return 2;
+    }
+
+    lua_pushinteger(L, ttyfd);
+    lua_pushinteger(L, resizefd);
+    return 2;
+}
+
+/*
+ * wait_readable(timeout_ms, fd...) -> ready_fd... | false (timeout/EINTR)
+ *                                  | nil, message
+ *
+ * Stateless select(2) wrapper. Runtime calls it from a libuv worker thread
+ * where libuv's own poller cannot watch tty devices (kqueue on macOS).
+ */
+static int l_wait_readable(lua_State *L) {
+    int timeout = (int)luaL_checkinteger(L, 1);
+    int count = lua_gettop(L) - 1;
+    int maxfd = -1;
+    int i;
+    int rv;
+    int pushed = 0;
+    fd_set fds;
+    struct timeval tv;
+
+    FD_ZERO(&fds);
+
+    for (i = 0; i < count; ++i) {
+        lua_Integer fd = luaL_checkinteger(L, i + 2);
+
+        if (fd < 0 || fd >= FD_SETSIZE) {
+            return luaL_argerror(L, i + 2, "file descriptor out of range");
+        }
+
+        FD_SET((int)fd, &fds);
+
+        if ((int)fd > maxfd) {
+            maxfd = (int)fd;
+        }
+    }
+
+    tv.tv_sec = timeout / 1000;
+    tv.tv_usec = (timeout % 1000) * 1000;
+    rv = select(maxfd + 1, &fds, NULL, NULL, timeout < 0 ? NULL : &tv);
+
+    if (rv < 0) {
+        if (errno == EINTR) {
+            lua_pushboolean(L, 0);
+            return 1;
+        }
+
+        lua_pushnil(L);
+        lua_pushstring(L, strerror(errno));
+        return 2;
+    }
+
+    for (i = 0; i < count; ++i) {
+        int fd = (int)lua_tointeger(L, i + 2);
+
+        if (FD_ISSET(fd, &fds)) {
+            lua_pushinteger(L, fd);
+            ++pushed;
+        }
+    }
+
+    if (pushed == 0) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    return pushed;
+}
+
 static int l_set_mouse_enabled(lua_State *L) {
     int mode = tb_set_input_mode(TB_INPUT_CURRENT);
 
@@ -252,7 +333,8 @@ static const luaL_Reg funcs[] = {
     {"set_cell", l_set_cell}, {"set_output_mode", l_set_output_mode}, {"output_mode", l_output_mode},
     {"has_truecolor", l_has_truecolor}, {"attr_width", l_attr_width}, {"wcwidth", l_wcwidth},
     {"error_string", l_error_string},
-    {"set_mouse_enabled", l_set_mouse_enabled}, {"poll", l_poll}, {NULL, NULL}
+    {"set_mouse_enabled", l_set_mouse_enabled}, {"get_fds", l_get_fds},
+    {"wait_readable", l_wait_readable}, {"poll", l_poll}, {NULL, NULL}
 };
 
 int luaopen_ltermbox(lua_State *L) {

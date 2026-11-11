@@ -122,6 +122,8 @@ termbox.attr_width()
 termbox.wcwidth(codepoint)
 termbox.error_string(error_code)
 termbox.set_mouse_enabled(true)
+termbox.get_fds()                 -- tty_fd, resize_fd
+termbox.wait_readable(timeout_ms, fd, ...)  -- select(2)，返回就绪的 fd 或 false
 termbox.width()
 termbox.height()
 termbox.clear()
@@ -259,6 +261,21 @@ tick 的事件读取。
 `Runtime.new(terminal, model, opts)` 默认监听 `sigterm`、`sighup` 和 `sigint`：收到
 信号后正常退出事件循环并关闭 Terminal，`run()` 返回信号名称；正常退出返回 `nil`。
 `opts.signals = false` 关闭该行为，也可以传入自定义的信号名称列表。
+
+Runtime 默认不再用 16ms 定时器轮询输入，`opts.input` 控制读取方式：
+
+- `auto`（默认）：依次尝试 `poll`、`thread`，都不可用时退回 `timer`。
+- `poll`：用 `uv.new_poll` 监听 `Terminal:fds()` 返回的 tty 和 resize 描述符。
+  Linux 等 epoll 平台使用此模式。
+- `thread`：macOS 的 kqueue 无法监听 tty 设备，因此在 libuv 线程池中阻塞调用
+  `select(2)`，描述符就绪后回到主线程读取事件，再发起下一轮等待；退出时通过唤醒
+  管道释放工作线程。该模式长期占用线程池中的一个线程（默认共 4 个），应用的
+  `uv.fs_*` 等线程池操作可用线程相应减少，需要时可设置 `UV_THREADPOOL_SIZE`。
+- `timer`：旧行为，每 16ms 轮询一次。
+
+空闲时进程不会被唤醒。应用在自己的 libuv 回调中调用 `runtime:dispatch()` 时，
+Runtime 会自动安排一次渲染。termbox 默认的 `TB_INPUT_ESC` 模式下单独按 ESC 会立即
+上报，不需要额外的超时处理。
 
 `PromptBox.new({ history = list })` 直接使用传入的 table 保存历史，提交的新命令会
 追加到该 table 中，便于应用持久化历史；不需要共享时请传入副本。

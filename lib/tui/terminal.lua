@@ -234,6 +234,28 @@ function Terminal:poll(timeout)
     return nil
 end
 
+-- File descriptors that become readable when input or a resize is pending.
+-- Runtime watches them with libuv instead of polling on a timer.
+function Terminal:fds()
+    if self.closed or not native.get_fds then
+        return
+    end
+
+    local ttyfd, resizefd = native.get_fds()
+
+    if not ttyfd then
+        error(native_error("get fds", resizefd), 2)
+    end
+
+    return ttyfd, resizefd
+end
+
+-- Module whose wait_readable(timeout_ms, fd...) Runtime may call from a
+-- worker thread when libuv cannot poll the tty directly.
+function Terminal:wait_module()
+    return "ltermbox"
+end
+
 function Terminal:present(canvas)
     check_result("clear", native.clear(), 2)
 
