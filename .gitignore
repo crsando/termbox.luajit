@@ -1,3 +1,4 @@
 termbox.so
 ltermbox.so
 .luarocks/
+.alma-snapshots
