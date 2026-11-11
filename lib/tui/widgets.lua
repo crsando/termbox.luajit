@@ -114,13 +114,26 @@ local function markdown_theme(override)
     return theme
 end
 
+local function split_lines(value, result)
+    for line in (value .. "\n"):gmatch("(.-)\n") do
+        result[#result + 1] = line
+    end
+
+    return result
+end
+
 function TextBox.new(opts)
     opts = opts or {}
     local follow_tail = opts.follow_tail == true
     local format = opts.format == nil and "plain" or opts.format
+    local wrap = opts.wrap == nil and "word" or opts.wrap
 
     if format ~= "plain" and format ~= "markdown" then
         error("TextBox format must be plain or markdown", 2)
+    end
+
+    if wrap ~= "word" and wrap ~= "char" then
+        error("TextBox wrap must be word or char", 2)
     end
 
     return setmetatable({
@@ -131,21 +144,33 @@ function TextBox.new(opts)
         follow_tail = follow_tail,
         at_tail = follow_tail,
         format = format,
+        wrap = wrap,
         tab_width = opts.tab_width or 4,
         markdown_theme = markdown_theme(opts.markdown_theme),
+        source_text = nil,
+        paragraphs = nil,
         parsed_lines = nil,
         layout_width = nil,
         layout_lines = nil,
+        layout_count = 0,
     }, TextBox)
 end
 
-function TextBox:display_text()
-    if self.display_source ~= self.text then
-        self.display_source = self.text
-        self.display_value = Text.sanitize(self.text, self.tab_width)
-    end
+-- Rebuild the per-paragraph caches from self.text. Also runs when an
+-- application assigns self.text directly instead of sending set_text.
+function TextBox:reset_source()
+    self.source_text = self.text
+    self.paragraphs = split_lines(Text.sanitize(self.text, self.tab_width), {})
+    self.parsed_lines = self.format == "markdown" and {} or nil
+    self.layout_width = nil
+    self.layout_lines = nil
+    self.layout_count = 0
+end
 
-    return self.display_value
+function TextBox:sync_source()
+    if self.source_text ~= self.text then
+        self:reset_source()
+    end
 end
 
 function TextBox:parse_markdown()
@@ -153,37 +178,72 @@ function TextBox:parse_markdown()
         return nil
     end
 
-    local parsed = {}
+    self:sync_source()
 
-    for line in (self:display_text() .. "\n"):gmatch("(.-)\n") do
-        parsed[#parsed + 1] = Markdown.parse_line(line)
+    for index, paragraph in ipairs(self.paragraphs) do
+        self.parsed_lines[index] = self.parsed_lines[index]
+            or Markdown.parse_line(paragraph)
     end
 
-    self.parsed_lines = parsed
-    self.layout_width = nil
-    self.layout_lines = nil
-    return parsed
+    return self.parsed_lines
 end
 
-function TextBox:layout_markdown(width)
-    if self.layout_width == width and self.layout_lines then
-        return self.layout_lines
+-- Visual lines for the given width. Wrapped paragraphs are cached, so after
+-- an append only the new paragraphs are parsed and wrapped; a width change
+-- re-wraps everything but reuses the parsed Markdown.
+function TextBox:layout(width)
+    self:sync_source()
+
+    if self.layout_width ~= width or not self.layout_lines then
+        self.layout_width = width
+        self.layout_lines = {}
+        self.layout_count = 0
     end
 
-    local parsed = self.parsed_lines or self:parse_markdown() or {}
-    local lines = {}
+    local lines = self.layout_lines
+    local markdown = self.format == "markdown"
 
-    for _, line in ipairs(parsed) do
-        local wrapped = Markdown.wrap_line(line, width)
+    for index = self.layout_count + 1, #self.paragraphs do
+        local paragraph = self.paragraphs[index]
+        local wrapped
+
+        if markdown then
+            local parsed = self.parsed_lines[index] or Markdown.parse_line(paragraph)
+            self.parsed_lines[index] = parsed
+            wrapped = Markdown.wrap_line(parsed, width, self.wrap)
+        else
+            wrapped = Text.wrap(paragraph, width, self.wrap)
+        end
 
         for _, visual_line in ipairs(wrapped) do
             lines[#lines + 1] = visual_line
         end
     end
 
-    self.layout_width = width
-    self.layout_lines = lines
+    self.layout_count = #self.paragraphs
     return lines
+end
+
+TextBox.layout_markdown = TextBox.layout
+
+-- Append text as new line(s) after the current content without re-parsing
+-- or re-wrapping what is already laid out.
+function TextBox:append(value)
+    if type(value) ~= "string" then
+        error("TextBox append expects a string", 2)
+    end
+
+    self:sync_source()
+
+    if self.text == "" then
+        self.text = value
+        self:reset_source()
+        return
+    end
+
+    self.text = self.text .. "\n" .. value
+    self.source_text = self.text
+    split_lines(Text.sanitize(value, self.tab_width), self.paragraphs)
 end
 
 function TextBox:update(msg)
@@ -218,18 +278,17 @@ function TextBox:update(msg)
 
     if msg.type == "set_text" then
         self.text = msg.text or ""
-        self.parsed_lines = nil
-        self.layout_width = nil
-        self.layout_lines = nil
-
-        if self.format == "markdown" then
-            self:parse_markdown()
-        end
+        self:reset_source()
 
         if not self.follow_tail then
             self.scroll = 0
         end
 
+        return true
+    end
+
+    if msg.type == "append" then
+        self:append(msg.text or "")
         return true
     end
 
@@ -240,19 +299,7 @@ function TextBox:view(canvas, rect)
     canvas:box(rect, { fg = Color.white })
 
     local content = inner(rect)
-    local lines = {}
-
-    if self.format == "markdown" then
-        lines = self:layout_markdown(content.width)
-    else
-        for line in (self:display_text() .. "\n"):gmatch("(.-)\n") do
-            local wrapped = Text.wrap(line, content.width)
-
-            for _, wrapped_line in ipairs(wrapped) do
-                lines[#lines + 1] = wrapped_line
-            end
-        end
-    end
+    local lines = self:layout(content.width)
 
     self.max_scroll = math.max(0, #lines - content.height)
 

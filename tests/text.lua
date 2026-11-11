@@ -123,4 +123,22 @@ assert(Text.sanitize("\t", 8) == "        ")
 assert(Text.is_control(9) and Text.is_control(0x9b))
 assert(not Text.is_control(10) and not Text.is_control(32))
 
+local function joined(value, width, mode)
+    return table.concat(Text.wrap(value, width, mode), "|")
+end
+
+assert(joined("hello world foo", 11, "word") == "hello world|foo")
+assert(joined("hello world foo", 8, "word") == "hello|world|foo")
+assert(joined("abcdefghij xy", 4, "word") == "abcd|efgh|ij|xy")
+assert(joined("  indented text here", 10, "word") == "  indented|text here")
+assert(joined("a    b", 3, "word") == "a|b")
+assert(joined("word   ", 4, "word") == "word")
+assert(joined("x 中文", 3, "word") == "x|中|文")
+assert(joined("中文文本，测试换行。", 6, "word") == "中文文|本，测|试换|行。")
+assert(joined("你好（世界）", 6, "word") == "你好|（世|界）")
+assert(joined("A中文B", 3, "word") == "A中|文B")
+assert(joined("", 5, "word") == "")
+assert(#Text.wrap("abc", 0, "word") == 0)
+assert(joined("hello world", 8) == "hello wo|rld")
+
 print("text: ok")

@@ -36,18 +36,7 @@ local text = Widgets.TextBox.new({
 })
 local terminal = Terminal.new({ mouse = true })
 
-local model = {
-    messages = {
-        "Program: **Ready**. Type /exit or press Ctrl-C to quit.",
-    },
-}
-
-function model.refresh_text(self)
-    text:update({
-        type = "set_text",
-        text = table.concat(self.messages, "\n"),
-    })
-end
+local model = {}
 
 local function quit_command()
     return function(runtime)
@@ -57,7 +46,10 @@ end
 
 function model.update(self, msg)
     if msg.type == "init" then
-        self:refresh_text()
+        text:update({
+            type = "set_text",
+            text = "Program: **Ready**. Type /exit or press Ctrl-C to quit.",
+        })
         return {}
     end
 
@@ -78,9 +70,9 @@ function model.update(self, msg)
                 return { quit_command() }
             end
 
-            table.insert(self.messages, ">>> " .. submitted)
-            table.insert(self.messages, "Program: You said: " .. submitted)
-            self:refresh_text()
+            -- append only lays out the new lines, so long histories stay cheap.
+            text:update({ type = "append", text = ">>> " .. submitted })
+            text:update({ type = "append", text = "Program: You said: " .. submitted })
         end
     end
 

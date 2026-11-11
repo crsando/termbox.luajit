@@ -286,4 +286,34 @@ wide_edit:update({ type = "text", text = "中文 字" })
 wide_edit:update({ type = "key", code = "ctrl-w" })
 assert(wide_edit.value == "中文 ")
 
+-- Word wrap is the TextBox default; char wrap stays available.
+local wrap_box = Widgets.TextBox.new({ text = "hello world" })
+local wrap_canvas = Canvas.new(9, 4)
+wrap_box:view(wrap_canvas, { x = 0, y = 0, width = 9, height = 4 })
+assert(wrap_canvas.cells[1][1].ch == "h" and wrap_canvas.cells[1][6].ch == " ")
+assert(wrap_canvas.cells[2][1].ch == "w")
+local char_box = Widgets.TextBox.new({ text = "hello world", wrap = "char" })
+char_box:view(Canvas.new(9, 4), { x = 0, y = 0, width = 9, height = 4 })
+assert(char_box.layout_lines[1] == "hello w")
+assert(not pcall(Widgets.TextBox.new, { wrap = "none" }))
+
+-- Plain append, and direct assignment of .text still invalidates caches.
+local plain_append = Widgets.TextBox.new()
+plain_append:update({ type = "append", text = "one" })
+plain_append:update({ type = "append", text = "two\nthree" })
+plain_append:view(Canvas.new(12, 6), { x = 0, y = 0, width = 12, height = 6 })
+assert(table.concat(plain_append.layout_lines, "|") == "one|two|three")
+plain_append.text = "reset"
+plain_append:view(Canvas.new(12, 6), { x = 0, y = 0, width = 12, height = 6 })
+assert(table.concat(plain_append.layout_lines, "|") == "reset")
+
+-- Appending while scrolled up keeps the reading position.
+local reading = Widgets.TextBox.new({ follow_tail = true, text = "1\n2\n3\n4\n5" })
+local reading_rect = { x = 0, y = 0, width = 6, height = 4 }
+reading:view(Canvas.new(6, 4), reading_rect)
+reading:update({ type = "scroll", delta = -2 })
+reading:update({ type = "append", text = "6" })
+reading:view(Canvas.new(6, 4), reading_rect)
+assert(reading.scroll == 1 and not reading.at_tail)
+
 print("smoke: ok")

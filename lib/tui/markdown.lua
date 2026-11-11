@@ -210,42 +210,35 @@ function Markdown.parse_line(value)
     }
 end
 
-function Markdown.wrap_line(line, max_width)
-    if max_width <= 0 then
-        return {}
+function Markdown.wrap_line(line, max_width, mode)
+    local chars = {}
+
+    for _, segment in ipairs(line.segments) do
+        for _, character in ipairs(Text.characters(segment.text)) do
+            chars[#chars + 1] = {
+                text = character.text,
+                width = character.width,
+                role = segment.role,
+            }
+        end
     end
 
     local result = {}
-    local current = {
-        heading = line.heading,
-        segments = {},
-        width = 0,
-    }
 
-    local function finish_line()
-        result[#result + 1] = current
-        current = {
+    for _, range in ipairs(Text.wrap_ranges(chars, max_width, mode)) do
+        local visual = {
             heading = line.heading,
             segments = {},
             width = 0,
         }
-    end
 
-    for _, segment in ipairs(line.segments) do
-        for _, character in ipairs(Text.characters(segment.text)) do
-            if current.width > 0
-                and current.width + character.width > max_width
-            then
-                finish_line()
-            end
-
-            append_segment(current.segments, character.text, segment.role)
-            current.width = current.width + character.width
+        for index = range[1], range[2] do
+            local character = chars[index]
+            append_segment(visual.segments, character.text, character.role)
+            visual.width = visual.width + character.width
         end
-    end
 
-    if current.width > 0 or #result == 0 then
-        finish_line()
+        result[#result + 1] = visual
     end
 
     return result

@@ -171,4 +171,52 @@ assert(render("a\\b") == "normal:a\\b")
 assert(Markdown.parse_line("\\# not heading").heading == nil)
 assert(Markdown.parse_line("\\# not heading").segments[1].text == "# not heading")
 
+local word_wrapped = Markdown.wrap_line(
+    Markdown.parse_line("plain **bold words** end"),
+    11,
+    "word"
+)
+assert(#word_wrapped == 2)
+assert(word_wrapped[1].segments[1].text == "plain ")
+assert(word_wrapped[1].segments[2].text == "bold")
+assert(word_wrapped[1].width == 10)
+assert(word_wrapped[2].segments[1].text == "words")
+assert(word_wrapped[2].segments[1].role == "strong")
+assert(word_wrapped[2].segments[2].text == " end")
+
+local function layout_text(lines)
+    local result = {}
+
+    for index, line in ipairs(lines) do
+        local parts = {}
+
+        for _, segment in ipairs(line.segments) do
+            parts[#parts + 1] = segment.role .. ":" .. segment.text
+        end
+
+        result[index] = table.concat(parts, ",")
+    end
+
+    return table.concat(result, "|")
+end
+
+local appended = Widgets.TextBox.new({ format = "markdown", follow_tail = true })
+local append_rect = { x = 0, y = 0, width = 14, height = 5 }
+appended:view(Canvas.new(14, 5), append_rect)
+appended:update({ type = "append", text = "# Hi" })
+appended:update({ type = "append", text = "some *long* text\tx" })
+appended:view(Canvas.new(14, 5), append_rect)
+local append_layout = appended.layout_lines
+local first_visual = append_layout[1]
+appended:update({ type = "append", text = "tail **end**" })
+appended:view(Canvas.new(14, 5), append_rect)
+assert(appended.layout_lines == append_layout)
+assert(appended.layout_lines[1] == first_visual)
+
+local reference = Widgets.TextBox.new({ format = "markdown", text = appended.text })
+reference:view(Canvas.new(14, 5), append_rect)
+assert(layout_text(appended.layout_lines) == layout_text(reference.layout_lines))
+assert(appended.text == "# Hi\nsome *long* text\tx\ntail **end**")
+assert(appended.scroll == appended.max_scroll)
+
 print("markdown: ok")
