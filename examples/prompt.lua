@@ -105,4 +105,10 @@ function model.view(self, canvas)
     prompt:view(canvas, areas.prompt)
 end
 
-Runtime.new(terminal, model):run()
+local stop_signal = Runtime.new(terminal, model):run()
+
+if stop_signal then
+    -- Conventional 128 + signal number exit status.
+    local codes = { sighup = 1, sigint = 2, sigterm = 15 }
+    os.exit(128 + (codes[stop_signal] or 0))
+end

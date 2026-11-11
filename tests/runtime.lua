@@ -153,4 +153,50 @@ app_timer:close()
 watchdog:close()
 uv.run()
 
+-- A termination signal quits the runtime and still closes the terminal.
+local signal_terminal = fake_terminal()
+local signal_runtime = Runtime.new(signal_terminal, {
+    update = function()
+        return {}
+    end,
+    view = function()
+    end,
+})
+local signal_watchdog = uv.new_timer()
+local signal_watchdog_fired = false
+signal_watchdog:start(2000, 0, function()
+    signal_watchdog_fired = true
+    uv.stop()
+end)
+local sender = uv.new_timer()
+sender:start(20, 0, function()
+    uv.kill(uv.os_getpid(), "sigterm")
+end)
+
+assert(signal_runtime:run() == "sigterm")
+assert(not signal_watchdog_fired)
+assert(signal_terminal.closed == 1)
+assert(#signal_runtime.signal_handles == 0)
+sender:close()
+signal_watchdog:close()
+uv.run()
+
+assert(not pcall(Runtime.new, signal_terminal, {}, { signals = "sigterm" }))
+local no_signals = Runtime.new(fake_terminal({ { type = "quit" } }), {
+    update = function(_, msg)
+        if msg.type == "quit" then
+            return {
+                function(runtime)
+                    runtime:quit()
+                end,
+            }
+        end
+
+        return {}
+    end,
+    view = function()
+    end,
+}, { signals = false })
+assert(no_signals:run() == nil)
+
 print("runtime: ok")

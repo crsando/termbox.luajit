@@ -9,10 +9,26 @@ local function traceback(message)
     return debug.traceback(message, 2)
 end
 
-function Runtime.new(terminal, model)
+local default_signals = { "sigterm", "sighup", "sigint" }
+
+function Runtime.new(terminal, model, opts)
+    opts = opts or {}
+    local signals = opts.signals
+
+    if signals == nil then
+        signals = default_signals
+    elseif signals == false then
+        signals = {}
+    elseif type(signals) ~= "table" then
+        error("signals must be a list of signal names or false", 2)
+    end
+
     return setmetatable({
         terminal = terminal,
         model = model,
+        signals = signals,
+        signal_handles = {},
+        stop_signal = nil,
         dirty = true,
         running = false,
         loop_running = false,
@@ -70,6 +86,17 @@ function Runtime:run()
 
         if not self.running then
             return
+        end
+
+        -- Termination signals stop the runtime normally so that close()
+        -- restores the terminal instead of leaving it in raw mode.
+        for _, name in ipairs(self.signals) do
+            local handle = assert(uv.new_signal(), "failed to create signal handle")
+            self.signal_handles[#self.signal_handles + 1] = handle
+            handle:start(name, function()
+                self.stop_signal = self.stop_signal or name
+                self:quit()
+            end)
         end
 
         self.timer = assert(uv.new_timer(), "failed to create runtime timer")
@@ -137,6 +164,10 @@ function Runtime:run()
     if not close_ok then
         error(close_error, 0)
     end
+
+    -- nil after a normal quit, otherwise the name of the signal (e.g.
+    -- "sigterm") so callers can exit with the conventional status.
+    return self.stop_signal
 end
 
 function Runtime:quit()
@@ -147,6 +178,14 @@ function Runtime:quit()
         self.timer = nil
         timer:stop()
         timer:close()
+    end
+
+    local handles = self.signal_handles
+    self.signal_handles = {}
+
+    for _, handle in ipairs(handles) do
+        handle:stop()
+        handle:close()
     end
 
     -- Other handles owned by the application (sockets, timers, ...) would

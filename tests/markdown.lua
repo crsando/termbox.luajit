@@ -147,4 +147,28 @@ assert(not pcall(Widgets.TextBox.new, {
     markdown_theme = { heading = "invalid" },
 }))
 
+local function render(value)
+    local parts = {}
+
+    for _, segment in ipairs(Markdown.inline(value)) do
+        parts[#parts + 1] = segment.role .. ":" .. segment.text
+    end
+
+    return table.concat(parts, "|")
+end
+
+assert(render("call snake_case_name now") == "normal:call snake_case_name now")
+assert(render("2 * 3 * 4") == "normal:2 * 3 * 4")
+assert(render("a ** b ** c") == "normal:a ** b ** c")
+assert(render("_ok_ and (_ok_)") == "emphasis:ok|normal: and (|emphasis:ok|normal:)")
+assert(render("*a * b*") == "emphasis:a * b")
+assert(render("in*word*emphasis") == "normal:in|emphasis:word|normal:emphasis")
+assert(render("中_文_字") == "normal:中_文_字")
+assert(render("\\*not\\*") == "normal:*not*")
+assert(render("\\_x_") == "normal:_x_")
+assert(render("\\\\*y*") == "normal:\\|emphasis:y")
+assert(render("a\\b") == "normal:a\\b")
+assert(Markdown.parse_line("\\# not heading").heading == nil)
+assert(Markdown.parse_line("\\# not heading").segments[1].text == "# not heading")
+
 print("markdown: ok")

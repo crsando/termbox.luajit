@@ -1,3 +1,4 @@
+local bit = require("bit")
 local native = require("ltermbox")
 local ColorEncoder = require("tui.color_encoder")
 local Text = require("tui.text")
@@ -29,9 +30,21 @@ local keys = {
     [native.KEY_BACKSPACE] = "backspace",
     [native.KEY_BACKSPACE2] = "backspace",
     [native.KEY_ENTER] = "enter",
-    [1] = "ctrl-a",
-    [5] = "ctrl-e",
+    [native.KEY_HOME] = "home",
+    [native.KEY_END] = "end",
+    [native.KEY_DELETE] = "delete",
+    [native.KEY_TAB] = "tab",
+    [native.KEY_ESC] = "escape",
+    [native.KEY_CTRL_A] = "ctrl-a",
+    [native.KEY_CTRL_E] = "ctrl-e",
+    [native.KEY_CTRL_K] = "ctrl-k",
+    [native.KEY_CTRL_U] = "ctrl-u",
+    [native.KEY_CTRL_W] = "ctrl-w",
 }
+
+local function has_alt(event)
+    return bit.band(event.mod or 0, native.MOD_ALT) ~= 0
+end
 
 function Terminal.new(opts)
     opts = opts or {}
@@ -123,9 +136,12 @@ function Terminal.normalize_event(event)
         local code = keys[event.key]
 
         if code then
+            local alt = has_alt(event)
+
             return {
                 type = "key",
-                code = code,
+                code = alt and "alt-" .. code or code,
+                alt = alt or nil,
                 raw = event.key,
             }
         end
@@ -139,6 +155,15 @@ function Terminal.normalize_event(event)
         end
 
         if ch ~= 0 and native.wcwidth(ch) > 0 then
+            if has_alt(event) then
+                return {
+                    type = "key",
+                    code = "alt-" .. Text.char(ch),
+                    alt = true,
+                    raw = ch,
+                }
+            end
+
             return {
                 type = "text",
                 text = Text.char(ch),
@@ -155,8 +180,58 @@ function Terminal.normalize_event(event)
     return nil
 end
 
+local function read_raw(self, timeout)
+    local pending = self.pending
+
+    if pending then
+        self.pending = nil
+        return pending
+    end
+
+    return native.poll(timeout)
+end
+
+-- In termbox's default TB_INPUT_ESC mode Alt+x arrives as an ESC key event
+-- immediately followed by "x" from the same read. Fold the pair into one
+-- alt-modified event; a lone ESC (nothing queued behind it) stays "escape".
+local function fold_alt(self, event)
+    if not (event.type == "key" and event.key == native.KEY_ESC) then
+        return event
+    end
+
+    local following = native.poll(0)
+
+    if following
+        and following.type == "key"
+        and (following.mod or 0) == 0
+        and (following.ch or 0) ~= 0
+    then
+        following.mod = native.MOD_ALT
+        return following
+    end
+
+    self.pending = following
+    return event
+end
+
+-- Returns the next framework message, or nil once the native queue is empty.
+-- Events the framework ignores (mouse clicks, releases, ...) are skipped
+-- instead of being reported as "no event", so queued input behind them is
+-- still delivered in the same tick.
 function Terminal:poll(timeout)
-    return Terminal.normalize_event(native.poll(timeout or 0))
+    local event = read_raw(self, timeout or 0)
+
+    while event do
+        local message = Terminal.normalize_event(fold_alt(self, event))
+
+        if message then
+            return message
+        end
+
+        event = read_raw(self, 0)
+    end
+
+    return nil
 end
 
 function Terminal:present(canvas)

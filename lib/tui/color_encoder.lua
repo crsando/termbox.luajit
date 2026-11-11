@@ -181,12 +181,17 @@ end
 
 function ColorEncoder.new(opts)
     opts = opts or {}
+    local has_truecolor = opts.has_truecolor
 
-    if opts.has_truecolor == nil then
-        opts.has_truecolor = true
+    if has_truecolor == nil then
+        has_truecolor = true
     end
 
-    local mode, no_color = resolve_mode(opts)
+    local mode, no_color = resolve_mode({
+        mode = opts.mode,
+        env = opts.env,
+        has_truecolor = has_truecolor,
+    })
 
     return setmetatable({
         mode = mode,

@@ -6,8 +6,8 @@
 
 - `TextBox`：只读 UTF-8 文字展示，支持 Unicode 边框、按显示列换行、鼠标滚轮和
   可暂停的自动追尾；可选 Markdown 渲染支持强调、斜体、粗体和一至四级标题。
-- `PromptBox`：单行 UTF-8 命令输入，支持光标移动、Backspace、Enter 提交以及
-  Up/Down 命令历史导航。
+- `PromptBox`：单行 UTF-8 命令输入，支持光标移动、Home/End、Backspace/Delete、
+  Ctrl-A/E/U/K/W、Enter 提交以及 Up/Down 命令历史导航。
 
 ## 架构
 
@@ -97,13 +97,14 @@ make run
 目前 demo 支持：
 
 - UTF-8 文本和中文等双列字符
-- Left / Right 按 codepoint 移动光标
-- Backspace 按 codepoint 删除
+- Left / Right 按 codepoint 移动光标，Home / End（或 Ctrl-A / Ctrl-E）跳到行首行尾
+- Backspace / Delete 按 codepoint 删除；Ctrl-U 删除到行首，Ctrl-K 删除到行尾，
+  Ctrl-W 删除光标前一个词
 - Up / Down 浏览已提交的命令历史
 - Enter
 - 在 TextBox 区域使用鼠标滚轮查看历史记录
 - 输入 `/exit` 后按 Enter 退出
-- `Ctrl-C` 退出
+- `Ctrl-C` 退出；收到 SIGTERM/SIGHUP/SIGINT 时先恢复终端，再以 `128 + 信号值` 退出
 
 Demo 将 PromptBox 提交视为用户与程序的对话。用户记录以 `>>> ` 开头，程序回复紧随
 其后。TextBox 默认追踪最新记录；用户向上滚动后保持当前阅读位置，滚回底部后恢复
@@ -149,6 +150,10 @@ local box = Widgets.TextBox.new({
     text = "# Title\n普通 *斜体* 和 **粗体**",
 })
 ```
+
+Markdown 采用简化的 CommonMark flanking 规则：开标记后不能紧跟空白，闭标记前不能是
+空白；`_` 不能在单词内部开闭，因此 `snake_case_name`、`2 * 3 * 4` 按普通文本显示。
+`\*`、`\_`、`\#`、`\\` 输出字面字符。
 
 支持的语法只有 `*emphasis*`、`_emphasis_`、`**strong**`、`__strong__`、
 `***strong emphasis***`、`___strong emphasis___` 和行首 `#` 至 `####` 标题。
@@ -240,10 +245,25 @@ TUI_COLOR_MODE=truecolor make run
 
 ```lua
 { type = "text", text = "中" }
-{ type = "key", code = "up|down|left|right" }
+{ type = "key", code = "up|down|left|right|home|end|delete|tab|escape|ctrl-u|..." }
+{ type = "key", code = "alt-x", alt = true }
 { type = "mouse", action = "wheel_up|wheel_down", x = 4, y = 2 }
 { type = "resize", width = 80, height = 24 }
 ```
+
+termbox 默认的 `TB_INPUT_ESC` 模式会把 Alt+x 报告为 ESC 键加普通字符。`Terminal`
+在同一次读取中看到 ESC 后紧跟字符时，将二者合并为 `alt-x`；单独按下的 ESC 仍是
+`escape`。框架不处理的原生事件（鼠标点击、释放等）会被跳过，不会提前结束当前
+tick 的事件读取。
+
+`Runtime.new(terminal, model, opts)` 默认监听 `sigterm`、`sighup` 和 `sigint`：收到
+信号后正常退出事件循环并关闭 Terminal，`run()` 返回信号名称；正常退出返回 `nil`。
+`opts.signals = false` 关闭该行为，也可以传入自定义的信号名称列表。
+
+`PromptBox.new({ history = list })` 直接使用传入的 table 保存历史，提交的新命令会
+追加到该 table 中，便于应用持久化历史；不需要共享时请传入副本。
+
+TextBox 绘制前会移除 `\r` 和其他控制字符，并按 `tab_width`（默认 4）展开 Tab。
 
 ## termbox 来源
 

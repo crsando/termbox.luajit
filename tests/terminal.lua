@@ -15,6 +15,20 @@ local native = {
     KEY_ENTER = 107,
     KEY_MOUSE_WHEEL_UP = 108,
     KEY_MOUSE_WHEEL_DOWN = 109,
+    KEY_HOME = 110,
+    KEY_END = 111,
+    KEY_DELETE = 112,
+    KEY_TAB = 9,
+    KEY_ESC = 27,
+    KEY_CTRL_A = 1,
+    KEY_CTRL_E = 5,
+    KEY_CTRL_K = 11,
+    KEY_CTRL_U = 21,
+    KEY_CTRL_W = 23,
+    MOD_ALT = 1,
+    MOD_CTRL = 2,
+    MOD_SHIFT = 4,
+    poll_queue = {},
     init_result = -4,
     output_result = 0,
     present_result = 0,
@@ -78,7 +92,7 @@ function native.present()
 end
 
 function native.poll()
-    return nil
+    return table.remove(native.poll_queue, 1)
 end
 
 function native.wcwidth()
@@ -120,6 +134,45 @@ local present_ok, present_error = pcall(function()
 end)
 assert(not present_ok)
 assert(tostring(present_error):find("present failed (-10): write failed", 1, true))
+
+-- Ignored events must not end the drain early.
+native.poll_queue = {
+    { type = "mouse", key = 0, x = 0, y = 0, mod = 0 },
+    { type = "key", key = 0, ch = 0x61, mod = 0 },
+}
+local after_ignored = terminal:poll(0)
+assert(after_ignored.type == "text" and after_ignored.text == "a")
+assert(terminal:poll(0) == nil)
+
+-- ESC immediately followed by a character is Alt+character.
+native.poll_queue = {
+    { type = "key", key = 27, ch = 0, mod = 0 },
+    { type = "key", key = 0, ch = 0x62, mod = 0 },
+}
+local alt_b = terminal:poll(0)
+assert(alt_b.type == "key" and alt_b.code == "alt-b" and alt_b.alt)
+assert(terminal:poll(0) == nil)
+
+-- A lone ESC stays escape; whatever followed it is delivered afterwards.
+native.poll_queue = {
+    { type = "key", key = 27, ch = 0, mod = 0 },
+}
+assert(terminal:poll(0).code == "escape")
+native.poll_queue = {
+    { type = "key", key = 27, ch = 0, mod = 0 },
+    { type = "key", key = 101, ch = 0, mod = 0 },
+}
+assert(terminal:poll(0).code == "escape")
+assert(terminal:poll(0).code == "up")
+assert(terminal:poll(0) == nil)
+
+-- Reported TB_MOD_ALT (TB_INPUT_ALT mode) and the new editing keys.
+assert(Terminal.normalize_event({ type = "key", key = 0, ch = 0x78, mod = 1 }).code == "alt-x")
+assert(Terminal.normalize_event({ type = "key", key = 110, ch = 0, mod = 0 }).code == "home")
+assert(Terminal.normalize_event({ type = "key", key = 111, ch = 0, mod = 0 }).code == "end")
+assert(Terminal.normalize_event({ type = "key", key = 112, ch = 0, mod = 0 }).code == "delete")
+assert(Terminal.normalize_event({ type = "key", key = 21, ch = 0, mod = 2 }).code == "ctrl-u")
+assert(Terminal.normalize_event({ type = "key", key = 23, ch = 0, mod = 2 }).code == "ctrl-w")
 
 terminal:close()
 terminal:close()

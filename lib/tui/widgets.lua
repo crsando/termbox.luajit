@@ -368,6 +368,39 @@ function PromptBox:history_down()
     self:leave_history()
 end
 
+-- Delete codepoints in [first, last) (0-based cursor positions) and leave
+-- history browsing, so a recalled entry is copied rather than modified.
+function PromptBox:delete_range(first, last)
+    local length = Text.length(self.value)
+    first = math.max(0, first)
+    last = math.min(length, last)
+
+    if first >= last then
+        return
+    end
+
+    self:leave_history()
+    self.value = Text.prefix(self.value, first) .. Text.suffix(self.value, last + 1)
+    self.cursor = first
+end
+
+-- readline unix-word-rubout: skip whitespace left of the cursor, then the
+-- run of non-whitespace before it.
+function PromptBox:previous_word_start()
+    local characters = Text.characters(self.value)
+    local index = self.cursor
+
+    while index > 0 and characters[index].text:match("^%s$") do
+        index = index - 1
+    end
+
+    while index > 0 and not characters[index].text:match("^%s$") do
+        index = index - 1
+    end
+
+    return index
+end
+
 function PromptBox:update(msg)
     if msg.type == "text" then
         self:leave_history()
@@ -391,15 +424,20 @@ function PromptBox:update(msg)
         self:history_up()
     elseif msg.code == "down" then
         self:history_down()
-    elseif msg.code == "ctrl-a" then
+    elseif msg.code == "ctrl-a" or msg.code == "home" then
         self.cursor = 0
-    elseif msg.code == "ctrl-e" then
+    elseif msg.code == "ctrl-e" or msg.code == "end" then
         self.cursor = Text.length(self.value)
-    elseif msg.code == "backspace" and self.cursor > 0 then
-        self:leave_history()
-        self.value = Text.prefix(self.value, self.cursor - 1)
-            .. Text.suffix(self.value, self.cursor + 1)
-        self.cursor = self.cursor - 1
+    elseif msg.code == "backspace" then
+        self:delete_range(self.cursor - 1, self.cursor)
+    elseif msg.code == "delete" then
+        self:delete_range(self.cursor, self.cursor + 1)
+    elseif msg.code == "ctrl-u" then
+        self:delete_range(0, self.cursor)
+    elseif msg.code == "ctrl-k" then
+        self:delete_range(self.cursor, Text.length(self.value))
+    elseif msg.code == "ctrl-w" then
+        self:delete_range(self:previous_word_start(), self.cursor)
     elseif msg.code == "enter" then
         self.submitted = self.value
 

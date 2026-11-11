@@ -93,4 +93,8 @@ local valid_truecolor = pcall(function()
 end)
 assert(not valid_truecolor)
 
+local encoder_opts = { mode = "256" }
+ColorEncoder.new(encoder_opts)
+assert(encoder_opts.has_truecolor == nil)
+
 print("colors: ok")
