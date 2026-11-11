@@ -1,6 +1,7 @@
 package.path = "./lib/?.lua;./lib/?/init.lua;" .. package.path
 
 local Canvas = require("tui.canvas")
+local Text = require("tui.text")
 local Color = require("tui.color")
 local Widgets = require("tui.widgets")
 
@@ -210,5 +211,47 @@ resized_prompt:view(resized_canvas, {
 assert(resized_prompt.scroll == 0)
 assert(resized_canvas.cells[1][3].ch == "a")
 assert(resized_canvas.cursor.x == 9)
+
+-- Backspace on a scrolled long line must scroll back instead of blanking.
+local shrink_prompt = Widgets.PromptBox.new({ prompt = "> " })
+local shrink_rect = { x = 0, y = 0, width = 14, height = 3 }
+
+for index = 1, 40 do
+    shrink_prompt:update({
+        type = "text",
+        text = string.char(96 + (index - 1) % 26 + 1),
+    })
+end
+
+shrink_prompt:view(Canvas.new(14, 3), shrink_rect)
+
+local shrink_canvas
+
+for _ = 1, 15 do
+    shrink_prompt:update({ type = "key", code = "backspace" })
+    shrink_canvas = Canvas.new(14, 3)
+    shrink_prompt:view(shrink_canvas, shrink_rect)
+end
+
+assert(Text.length(shrink_prompt.value) == 25)
+assert(shrink_prompt.scroll == 16)
+assert(shrink_canvas.cells[1][3].ch == "q")
+assert(shrink_canvas.cells[1][11].ch == "y")
+assert(shrink_canvas.cursor.x == 12)
+
+-- Control characters never reach a cell; tabs expand to tab stops.
+local control_box = Widgets.TextBox.new({ text = "a\tb\r\nc\27d" })
+local control_canvas = Canvas.new(12, 4)
+control_box:view(control_canvas, { x = 0, y = 0, width = 12, height = 4 })
+assert(control_canvas.cells[1][1].ch == "a")
+assert(control_canvas.cells[1][2].ch == " ")
+assert(control_canvas.cells[1][5].ch == "b")
+assert(control_canvas.cells[1][6].ch == " ")
+assert(control_canvas.cells[2][1].ch == "c")
+assert(control_canvas.cells[2][2].ch == "d")
+
+local raw_canvas = Canvas.new(6, 1)
+assert(raw_canvas:text(0, 0, "x\ty", {}) == 2)
+assert(raw_canvas.cells[0][1].ch == "y")
 
 print("smoke: ok")

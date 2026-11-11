@@ -131,11 +131,21 @@ function TextBox.new(opts)
         follow_tail = follow_tail,
         at_tail = follow_tail,
         format = format,
+        tab_width = opts.tab_width or 4,
         markdown_theme = markdown_theme(opts.markdown_theme),
         parsed_lines = nil,
         layout_width = nil,
         layout_lines = nil,
     }, TextBox)
+end
+
+function TextBox:display_text()
+    if self.display_source ~= self.text then
+        self.display_source = self.text
+        self.display_value = Text.sanitize(self.text, self.tab_width)
+    end
+
+    return self.display_value
 end
 
 function TextBox:parse_markdown()
@@ -145,7 +155,7 @@ function TextBox:parse_markdown()
 
     local parsed = {}
 
-    for line in (self.text .. "\n"):gmatch("(.-)\n") do
+    for line in (self:display_text() .. "\n"):gmatch("(.-)\n") do
         parsed[#parsed + 1] = Markdown.parse_line(line)
     end
 
@@ -235,7 +245,7 @@ function TextBox:view(canvas, rect)
     if self.format == "markdown" then
         lines = self:layout_markdown(content.width)
     else
-        for line in (self.text .. "\n"):gmatch("(.-)\n") do
+        for line in (self:display_text() .. "\n"):gmatch("(.-)\n") do
             local wrapped = Text.wrap(line, content.width)
 
             for _, wrapped_line in ipairs(wrapped) do
@@ -446,6 +456,30 @@ function PromptBox:ensure_cursor_visible(input_width)
             self.scroll = self.scroll - 1
             cursor_width = cursor_width + previous_width
         end
+    end
+
+    -- When the value shrinks (Backspace) or the cursor jumps left, do not
+    -- leave blank columns on the right while text is hidden on the left:
+    -- scroll back until the tail of the value, plus the end-of-line cursor
+    -- cell (always reserved), fills the input area.
+    local tail_width = 0
+
+    for index = self.scroll + 1, #characters do
+        tail_width = tail_width + characters[index].width
+    end
+
+    local end_cell = 1
+
+    while self.scroll > 0 do
+        local previous_width = characters[self.scroll].width
+
+        if tail_width + previous_width + end_cell > input_width then
+            break
+        end
+
+        self.scroll = self.scroll - 1
+        tail_width = tail_width + previous_width
+        cursor_width = cursor_width + previous_width
     end
 
     self.scroll = math.max(0, math.min(self.scroll, Text.length(self.value)))

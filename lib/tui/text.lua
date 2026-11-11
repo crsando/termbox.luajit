@@ -50,6 +50,43 @@ function Text.characters(value)
     return result
 end
 
+-- C0 controls (except newline, which callers split on), DEL and C1 controls.
+-- termbox renders these as U+FFFD, so they must never reach a cell.
+function Text.is_control(codepoint)
+    return (codepoint < 0x20 and codepoint ~= 0x0a)
+        or (codepoint >= 0x7f and codepoint <= 0x9f)
+end
+
+-- Prepare text for display: drop carriage returns and other control
+-- characters, expand tabs to the next tab stop. Newlines are kept.
+function Text.sanitize(value, tab_width)
+    check_string(value, 3)
+    tab_width = tab_width or 4
+
+    if not value:find("[%z\1-\9\11-\31\127\194]") then
+        return value
+    end
+
+    local parts = {}
+    local column = 0
+
+    for _, codepoint in utf8.codes(value) do
+        if codepoint == 0x0a then
+            parts[#parts + 1] = "\n"
+            column = 0
+        elseif codepoint == 0x09 then
+            local spaces = tab_width - column % tab_width
+            parts[#parts + 1] = string.rep(" ", spaces)
+            column = column + spaces
+        elseif not Text.is_control(codepoint) then
+            parts[#parts + 1] = utf8.char(codepoint)
+            column = column + math.max(1, native.wcwidth(codepoint))
+        end
+    end
+
+    return table.concat(parts)
+end
+
 function Text.sub(value, first, last)
     check_string(value, 3)
     return utf8.sub(value, first, last)

@@ -35,7 +35,7 @@ termbox C event -> Lua binding -> normalized message -> model:update(msg)
 ## 构建和测试
 
 ```sh
-cd ~/Develop/termbox.luajit
+cd termbox.luajit
 make
 make test
 make check
@@ -56,12 +56,17 @@ ltermbox.so
 local termbox = require("ltermbox")
 ```
 
-Makefile 默认通过 `pkg-config --cflags --libs luajit` 查找 LuaJIT，也可以手动覆盖：
+Makefile 默认通过 `pkg-config --cflags luajit` 查找 LuaJIT 头文件，也可以手动覆盖：
 
 ```sh
-make LUAJIT_CFLAGS="-I/opt/homebrew/opt/luajit/include/luajit-2.1" \
-     LUAJIT_LIBS="-L/opt/homebrew/opt/luajit/lib -lluajit-5.1"
+make LUAJIT_CFLAGS="-I/opt/homebrew/opt/luajit/include/luajit-2.1"
 ```
+
+`ltermbox.so` 不链接 `libluajit`：macOS 使用 `-bundle -undefined dynamic_lookup`，
+Linux 使用 `-shared`，Lua C API 符号由加载它的 `luajit` 进程提供。若同时链接
+`libluajit`，静态链接的 `luajit`（例如 Homebrew 版本）进程内会出现两份 VM。
+`-fPIC`、`-bundle`/`-shared` 等必需参数放在 `MODULE_CFLAGS`/`MODULE_LDFLAGS` 中，
+环境变量里的 `CFLAGS`/`LDFLAGS` 只会追加，不会覆盖它们。
 
 luautf8 不纳入本仓库，也不由 Makefile 编译。使用与 LuaJIT 兼容的 Lua 5.1
 LuaRocks 单独编译安装：
@@ -69,6 +74,14 @@ LuaRocks 单独编译安装：
 ```sh
 luarocks --lua-version=5.1 install luautf8
 luajit -e 'local utf8 = require("lua-utf8"); assert(utf8.len("中文") == 2)'
+```
+
+也可以安装到仓库内的本地 tree（`.luarocks/` 已被 gitignore）：
+
+```sh
+luarocks --lua-version=5.1 --tree .luarocks install luautf8
+eval "$(luarocks --lua-version=5.1 --tree .luarocks path)"
+make test
 ```
 
 使用自定义或用户级 LuaRocks tree 时，需要确保 `luarocks path --lua-version=5.1`

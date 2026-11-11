@@ -126,6 +126,10 @@ function Canvas:text(x, y, text, style, max_width)
     local drawn_width = 0
 
     for _, character in ipairs(Text.characters(text)) do
+        if Text.is_control(character.codepoint) or character.codepoint == 0x0a then
+            goto continue
+        end
+
         if (max_width and drawn_width + character.width > max_width)
             or column + character.width > self.width
         then
@@ -138,6 +142,7 @@ function Canvas:text(x, y, text, style, max_width)
 
         column = column + character.width
         drawn_width = drawn_width + character.width
+        ::continue::
     end
 
     return drawn_width

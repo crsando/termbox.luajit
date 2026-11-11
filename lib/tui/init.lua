@@ -15,6 +15,7 @@ function Runtime.new(terminal, model)
         model = model,
         dirty = true,
         running = false,
+        loop_running = false,
         closed = false,
         callback_error = nil,
     }, Runtime)
@@ -103,13 +104,18 @@ function Runtime:run()
                     self.callback_error = self.callback_error
                         .. "\nwhile stopping runtime:\n"
                         .. quit_error
+                    uv.stop()
                 end
-
-                uv.stop()
             end
         end)
 
-        uv.run()
+        self.loop_running = true
+        local loop_ok, loop_error = pcall(uv.run)
+        self.loop_running = false
+
+        if not loop_ok then
+            error(loop_error, 0)
+        end
 
         if self.callback_error then
             error(self.callback_error, 0)
@@ -141,6 +147,14 @@ function Runtime:quit()
         self.timer = nil
         timer:stop()
         timer:close()
+    end
+
+    -- Other handles owned by the application (sockets, timers, ...) would
+    -- otherwise keep uv.run() alive after the runtime has quit. Only stop the
+    -- loop while run() is inside it; a stale stop flag would make the next
+    -- uv.run() elsewhere return immediately.
+    if self.loop_running then
+        uv.stop()
     end
 end
 

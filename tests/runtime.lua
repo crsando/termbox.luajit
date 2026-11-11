@@ -115,4 +115,42 @@ assert(not pcall(function()
     normal_quit:run()
 end))
 
+local uv = require("tui").uv
+local app_timer = uv.new_timer()
+local app_ticks = 0
+app_timer:start(0, 5, function()
+    app_ticks = app_ticks + 1
+end)
+local watchdog = uv.new_timer()
+local watchdog_fired = false
+watchdog:start(2000, 0, function()
+    watchdog_fired = true
+    uv.stop()
+end)
+
+local extra_handle_terminal = fake_terminal({ { type = "quit" } })
+local extra_handle = Runtime.new(extra_handle_terminal, {
+    update = function(_, msg)
+        if msg.type == "quit" then
+            return {
+                function(runtime)
+                    runtime:quit()
+                end,
+            }
+        end
+
+        return {}
+    end,
+    view = function()
+    end,
+})
+
+extra_handle:run()
+assert(not watchdog_fired, "quit() must stop uv.run() while app handles are alive")
+assert(extra_handle_terminal.closed == 1)
+assert(not extra_handle.loop_running)
+app_timer:close()
+watchdog:close()
+uv.run()
+
 print("runtime: ok")

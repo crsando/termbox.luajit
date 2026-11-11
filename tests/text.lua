@@ -114,4 +114,13 @@ ascii:box({ x = 0, y = 0, width = 4, height = 3 }, { border = "ascii" })
 assert(ascii.cells[0][0].ch == "+")
 assert(ascii.cells[1][0].ch == "|")
 
+assert(Text.sanitize("plain") == "plain")
+assert(Text.sanitize("a\tb") == "a   b")
+assert(Text.sanitize("中\tx") == "中  x")
+assert(Text.sanitize("ab\r\ncd\te") == "ab\ncd  e")
+assert(Text.sanitize("x\0y\127z\194\133w") == "xyzw")
+assert(Text.sanitize("\t", 8) == "        ")
+assert(Text.is_control(9) and Text.is_control(0x9b))
+assert(not Text.is_control(10) and not Text.is_control(32))
+
 print("text: ok")
